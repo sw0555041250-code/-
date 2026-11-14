@@ -18,7 +18,6 @@ os.makedirs(out, exist_ok=True)
 WHISPER = {
     "whisper-base": "Xenova/whisper-base",
     "whisper-small": "Xenova/whisper-small",
-    "whisper-turbo": "onnx-community/whisper-large-v3-turbo",
 }
 for name, repo in WHISPER.items():
   try:

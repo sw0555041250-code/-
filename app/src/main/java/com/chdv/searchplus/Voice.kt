@@ -33,12 +33,25 @@ import kotlin.math.max
 object VoiceModels {
     class Spec(val key: String, val title: String, val repo: String, val sizeMb: Int, val note: String)
 
+    /** From light to most accurate. */
     val SPECS = listOf(
-        Spec("small", "מדויק (מומלץ)", "Xenova/whisper-small", 250, "מבין עברית טוב. כ-10 שניות לזיהוי ב-BOOX"),
-        Spec("base", "מהיר", "Xenova/whisper-base", 80, "מהיר פי 3, אבל טועה יותר בעברית"),
+        Spec("base", "מהיר", "Xenova/whisper-base", 80, "קל ומהיר, טועה יותר בעברית"),
+        Spec("small", "מדויק", "Xenova/whisper-small", 250, "מבין עברית טוב – מתאים לכל מכשיר"),
     )
 
-    fun spec(key: String = Prefs.s("whisperModel", "small")) = SPECS.firstOrNull { it.key == key } ?: SPECS[0]
+    private fun totalMemMb(c: Context): Long {
+        val mi = ActivityManager.MemoryInfo()
+        (c.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(mi)
+        return mi.totalMem / (1024 * 1024)
+    }
+
+    /** The default level for this device: the most accurate one it can run comfortably. */
+    fun defaultKey(c: Context = App.ctx) = if (totalMemMb(c) < 1500) "base" else "small"
+
+    fun spec(key: String = Prefs.s("whisperModel", defaultKey())) = SPECS.firstOrNull { it.key == key } ?: SPECS[1]
+
+    /** The next, more accurate level (null at the top). */
+    fun nextSpec(): Spec? = SPECS.getOrNull(SPECS.indexOf(spec()) + 1)
 
     /** Models go to the storage with the most free space (internal memory or the memory card). */
     fun dir(c: Context, key: String): File {

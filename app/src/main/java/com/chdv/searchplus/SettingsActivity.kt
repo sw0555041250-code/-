@@ -96,7 +96,7 @@ class SettingsActivity : BaseActivity() {
         val wReady = VoiceModels.ready(this)
         item(if (wReady) "מודל הדיבור במכשיר: ${wm.title} ✓" else "הורדת מודל דיבור לעבודה בלי אינטרנט",
             if (wReady) "נשמר ב: ${VoiceModels.dir(this, wm.key).parent}\nלחיצה להחלפה או למחיקה"
-            else "הורדה חד-פעמית (80–250MB). נשמר במכשיר או בכרטיס – איפה שיש יותר מקום") {
+            else "הורדה חד-פעמית. שלוש רמות: מהיר · מדויק · מדויק מאוד. נשמר במכשיר או בכרטיס – איפה שיש יותר מקום") {
             val items = ArrayList<Pair<String, () -> Unit>>()
             VoiceModels.SPECS.forEach { sp ->
                 val have = VoiceModels.ready(this, sp.key)
@@ -126,7 +126,7 @@ class SettingsActivity : BaseActivity() {
         val dReady = Semantic.Deep.ready(this)
         item(if (dReady) "🧠 מודל ההבנה העמוק מותקן ✓" else "🧠 מודל הבנה עמוק – תשובות מדויקות יותר (כ-570MB)",
             if (dReady) "קורא את המשפטים בהקשר ובוחר את התשובה האמיתית · לחיצה לניהול"
-            else "מודל גדול (BGE-M3) שמבין עברית לעומק. נטען רק לבחירת התשובה. מומלץ במכשיר עם 3GB זיכרון ומעלה; ב-BOOX עלול להיות איטי") {
+            else "הבנה מתקדמת: מודל גדול (BGE-M3) שקורא את המשפטים בהקשר ובוחר את התשובה האמיתית. איטי יותר במכשירים חלשים") {
             if (!dReady) {
                 val st = label("מתחיל…", 15f, Col.SUB)
                 val d = Sheet.make(this, vbox().apply { setPadding(dp(18), dp(18), dp(18), dp(18)); addView(label("מוריד את מודל ההבנה", 18f, Col.TEXT, true)); addView(st) })

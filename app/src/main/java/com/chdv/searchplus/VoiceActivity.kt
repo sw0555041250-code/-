@@ -141,6 +141,20 @@ class VoiceActivity : BaseActivity() {
             if (words.books.size > books.size) results.addView(pill("לכל ${words.books.size} התוצאות", false) { openMain("words", text) }, lp(MATCH, WRAP).m(0, dp(8), 0, 0))
         }
         results.addView(pill("💡 לשאול את זה לפי משמעות", false) { openMain("meaning", text) }, lp(MATCH, WRAP).m(0, dp(10), 0, 0))
+        // nothing useful came out: offer the more accurate speech recognition
+        val weak = noDaf || (targets.isEmpty() && (words == null || words.books.isEmpty())) || (ref != null && targets.isEmpty())
+        val next = VoiceModels.nextSpec()
+        if (weak && next != null && VoiceSearch.engine(this) == "whisper") {
+            results.addView(pill("🎤 לא הבין נכון? לנסות זיהוי ${next.title} (${next.note})") {
+                Prefs.put("whisperModel", next.key); VoiceModels.Engine.release()
+                if (VoiceModels.ready(this, next.key)) listen() else VoiceSearch.downloadNow(this, next.key) { listen() }
+            }, lp(MATCH, WRAP).m(0, dp(10), 0, 0))
+        } else if (weak && VoiceSearch.engine(this) == "whisper" && VoiceSearch.systemAvailable(this)) {
+            // the most advanced: the device's online speech service (Google), much stronger in Hebrew
+            results.addView(pill("🌐 לא הבין נכון? לנסות זיהוי מתקדם דרך האינטרנט") {
+                Prefs.put("voiceEngine", "auto"); Prefs.put("systemFailed", false); listen()
+            }, lp(MATCH, WRAP).m(0, dp(10), 0, 0))
+        }
         if (auto && targets.size == 1) results.postDelayed({ if (!isFinishing) results.getChildAt(0)?.performClick() }, 700)
     }
 

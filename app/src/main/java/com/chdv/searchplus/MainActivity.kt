@@ -567,11 +567,12 @@ class MainActivity : BaseActivity() {
     }
 
     private fun voiceCrashSheet(details: String) {
-        val small = Prefs.s("whisperModel", "small") == "small"
+        val cur = VoiceModels.spec()
+        val lower = VoiceModels.SPECS.getOrNull(VoiceModels.SPECS.indexOf(cur) - 1)
         val items = ArrayList<Pair<String, () -> Unit>>()
-        if (small) items.add("לעבור למודל הדיבור המהיר (קטן פי 3 – מתאים לזיכרון קטן)" to {
-            Prefs.put("whisperModel", "base")
-            if (!VoiceModels.ready(this, "base")) VoiceSearch.downloadNow(this, "base") { toast("מוכן – נסו שוב את המיקרופון") } else toast("עבר למודל המהיר – נסו שוב")
+        if (lower != null) items.add("לעבור לזיהוי ${lower.title} (קל יותר למכשיר)" to {
+            Prefs.put("whisperModel", lower.key)
+            if (!VoiceModels.ready(this, lower.key)) VoiceSearch.downloadNow(this, lower.key) { toast("מוכן – נסו שוב את המיקרופון") } else toast("עבר לזיהוי ${lower.title} – נסו שוב")
         })
         if (VoiceSearch.systemAvailable(this)) items.add("להשתמש בשירות הדיבור של המכשיר (צריך אינטרנט)" to { Prefs.put("voiceEngine", "system"); toast("נסו שוב את המיקרופון") })
         items.add("להעתיק את הפרטים למפתח" to {
@@ -878,11 +879,13 @@ class MainActivity : BaseActivity() {
                     val src = a?.let { x -> Db.get().pageRef(x.pageId) }?.let { ref -> Db.get().book(ref.first)?.let { it to ref.second } }
                     v.findViewById<TextView>(2).text = when {
                         a == null -> "קורא את הקטעים הקרובים ומחפש את המשפט שעונה על השאלה…"
-                        a.pageId < 0 || src == null -> "לא נמצא משפט שעונה במדויק. הקטעים הקרובים ביותר מופיעים למטה."
+                        a.pageId < 0 || src == null -> "לא נמצא משפט שעונה במדויק. הקטעים הקרובים ביותר מופיעים למטה." +
+                            if (!Semantic.Deep.ready(this@MainActivity)) "\n\n🧠 לחצו כאן להבנה מתקדמת יותר – מודל שקורא את המשפטים בהקשר ומוצא את התשובה." else ""
                         else -> "‟" + a.text + "”"
                     }
                     v.findViewById<TextView>(3).text = if (src != null && a != null && a.pageId >= 0) "📖 ${src.first.title}, עמוד ${src.second}  ·  לפתיחה ◂" else ""
                     v.setOnClickListener {
+                        if ((a == null || a.pageId < 0 || src == null) && !Semantic.Deep.ready(this@MainActivity)) { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)); toast("הגדרות › 🧠 מודל הבנה עמוק"); return@setOnClickListener }
                         if (src != null) ReaderActivity.open(this@MainActivity, src.first.path, src.second, Semantic.keyWords(a!!.text).take(6), phrase = a.text)
                     }
                 }

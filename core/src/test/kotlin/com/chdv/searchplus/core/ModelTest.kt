@@ -56,7 +56,7 @@ class ModelTest {
     @Test fun whisperTranscribes() {
         val env = OrtEnvironment.getEnvironment()
         val cases = need("audio/cases.txt").readLines().filter { it.isNotBlank() }
-        for (model in listOf("whisper-base", "whisper-small", "whisper-turbo")) {
+        for (model in listOf("whisper-base", "whisper-small")) {
             val enc = File(dir, "$model/encoder_model_quantized.onnx")
             if (!enc.exists()) { println("skip $model"); continue }
             val w = Whisper(env, enc.path, File(dir, "$model/decoder_model_merged_quantized.onnx").path, WhisperTokenizer(File(dir, "$model/tokenizer.json")))
