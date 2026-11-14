@@ -37,9 +37,11 @@
 | `BrowseActivity.kt` | עיון בתיקיות וספרים + `FolderPicker` (זיכרון פנימי וכרטיס זיכרון) |
 | `SettingsActivity.kt` | כל ההגדרות: תיקיות, סריקה, OCR, משמעות, פתיחה, גודל כתב, עדכונים, אודות |
 | `Updater.kt` | עדכון עצמי מ-`releases/latest` של המאגר |
+| `Organizer.kt` | סידור המאגר על המכשיר: כפולים לפי תוכן (hash לקובץ זהה + טביעת אצבע של רצפי 5 מילים / bottom‑k MinHash לתוכן זהה), סיווג ספר לתיקייה (TF‑IDF של כל תיקייה מול הספר, יורד בעץ התיקיות), תוכנית סידור לתיקייה עם תצוגה מקדימה (`Plan`: לפי נושא – k‑means על התוכן, לפי סדרה, לפי אות, לתיקיות המאגר), שמות חכמים (דף שער – הגופן הגדול / מטא‑דאטה; שם תיקייה לפי הספרים), העברה/שינוי שם עם עדכון האינדקס ויומן ביטול (`moveLog`) |
+| `OrganizeActivity.kt` | המסך של סידור המאגר: לשוניות כפולים / סידור לתיקיות (כולל תצוגה מקדימה ועריכה) / שמות חכמים, וכפתור "ביטול" |
 
 ## מפתחות Prefs
-`roots`, `semanticRoots`, `match` (PHRASE/ALL/NEAR/ANY), `prefixes`, `sort`, `lastSemantic`, `semantic`, `ocrAuto`, `autoScan`, `sortByPosition`, `openWith` (internal/external), `fontSize`, `autoUpdate`, `lastUpdateCheck`, `favs` (`path|page`), `history`, `recent` (`path|page`).
+`roots`, `semanticRoots`, `match` (PHRASE/ALL/NEAR/ANY), `prefixes`, `sort`, `lastSemantic`, `semantic`, `ocrAuto`, `autoScan`, `sortByPosition`, `openWith` (internal/external), `fontSize`, `autoUpdate`, `lastUpdateCheck`, `favs` (`path|page`), `history`, `recent` (`path|page`), `moveLog` (`M|now|wasDir` או `R|now|wasPath`).
 
 ## רעיונות להמשך
 - הדגשה גם בעמודי OCR (מיקומי מילים מ-Tesseract ResultIterator).
@@ -75,6 +77,8 @@
 - **מיון** – לפי רלוונטיות, שם, תיקייה, גודל, תאריך או מספר עמודים.
 - **פתיחה בדיוק בעמוד** – הקורא המובנה פותח את הספר בעמוד שבו נמצא הביטוי, **ומסמן את המילים על העמוד**. כפתור "תוצאה הבאה" קופץ לעמוד הבא שבו מופיע הביטוי. אפשר גם לפתוח באפליקציה אחרת.
 - **ספרים ישנים** – תיקון אוטומטי של טקסט עברי הפוך (סדר ויזואלי) ושל קידודים ישנים (Windows-1255 / DOS-862) שנראים כמו ג'יבריש. עמודים סרוקים בלי שכבת טקסט עוברים **זיהוי אותיות (OCR) עברי** – הרכיב כבר כלול בתוכנה.
+- **שאלה ותשובה** – בחיפוש לפי משמעות מופיע כרטיס "התשובה מתוך הספרים שלך": המשפט שעונה על השאלה, עם המקור והעמוד – לחיצה פותחת שם.
+- **סידור המאגר** (🗂): **ספרים כפולים** – לפי התוכן שבתוך הקובץ ולא לפי השם (גם סריקה אחרת של אותו ספר); **סידור תיקייה עם תצוגה מקדימה** – בוחרים תיקייה ושיטה (לפי נושא / סדרה / אות / לתיקיות המאגר), עורכים את ההצעה ורק אז מחילים; **שמות חכמים** לקבצים ולתיקיות לפי דף השער והתוכן – עם שאלה על כל שינוי. הכול ניתן לביטול.
 - **עיון בספרים** בלי חיפוש, **חיפוש בתוך ספר**, **מועדפים**, **חיפושים אחרונים**, **ספרים שנפתחו לאחרונה** (המשך מהעמוד האחרון), העתקת טקסט של עמוד ושיתוף.
 - **עדכון אוטומטי** – התוכנה בודקת פעם ביום אם יש גרסה חדשה כאן ב-GitHub ומציעה להתקין אותה. האינדקס וההגדרות נשמרים.
 
@@ -2051,6 +2055,7 @@ class OrganizeActivity : BaseActivity() {
     private var suggestions: List<Organizer.Suggestion>? = null
     private var targets: List<Organizer.Target> = emptyList()
     private var renames: List<Organizer.Rename>? = null
+    private var plan: Organizer.Plan? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -2067,7 +2072,7 @@ class OrganizeActivity : BaseActivity() {
     private fun render() {
         tabs.removeAllViews()
         listOf("ספרים כפולים", "סידור לתיקיות", "שמות חכמים").forEachIndexed { i, t ->
-            tabs.addView(chip(t, i == tab) { if (!busy) { tab = i; render() } }, lp(0, WRAP, 1f).m(dp(3), 0, dp(3), 0))
+            tabs.addView(chip(t, i == tab) { if (!busy) { tab = i; plan = null; render() } }, lp(0, WRAP, 1f).m(dp(3), 0, dp(3), 0))
         }
         box.removeAllViews()
         when (tab) { 0 -> renderDups(); 1 -> renderSort(); else -> renderNames() }
@@ -2154,8 +2159,16 @@ class OrganizeActivity : BaseActivity() {
     // ---------------- smart sorting ----------------
 
     private fun renderSort() {
+        plan?.let { renderPlan(it); return }
         val s = suggestions
         if (s == null) {
+            box.addView(label("סידור תיקייה – עם תצוגה מקדימה", 17f, Col.TEXT, true).apply { setPadding(dp(4), dp(10), dp(4), dp(2)) })
+            note("בוחרים תיקייה ושיטת מיון. התוכנה מראה איך התיקייה תיראה אחרי הסידור; אפשר לשנות שמות של תיקיות, להעביר ספר מקבוצה לקבוצה או לבטל קבוצה – ורק כשמאשרים, הקבצים זזים. לא אהבתם? בוחרים שיטה אחרת.")
+            box.addView(pill("בחירת תיקייה לסידור") {
+                FolderPicker.pick(this) { d -> chooseScheme(File(d)) }
+            }, lp(MATCH, WRAP).m(0, dp(4), 0, dp(4)))
+            box.addView(divider(), lp(MATCH, 1).m(0, dp(14), 0, dp(4)))
+            box.addView(label("סידור ספרים לתיקיות המאגר", 17f, Col.TEXT, true).apply { setPadding(dp(4), dp(10), dp(4), dp(2)) })
             note("התוכנה לומדת מה יש בכל תיקייה במאגר (לפי התוכן של הספרים שכבר נמצאים בה ולפי שם התיקייה), ומציעה לכל ספר את התיקייה המתאימה לו – למשל ספר על הלכות שבת → הלכה › שבת.\n\nאתם רואים את כל ההצעות, משנים או מבטלים מה שרוצים, ורק אז הקבצים מועברים. אפשר לבטל את כל הסידור בכפתור \"ביטול\".")
             box.addView(pill("ספרים שלא נמצאים בשום תיקייה") { doSuggest(null, false) }, lp(MATCH, WRAP).m(0, dp(4), 0, dp(4)))
             box.addView(pill("ספרים מתיקייה אחרת (למשל הורדות)…", false) {
@@ -2186,6 +2199,79 @@ class OrganizeActivity : BaseActivity() {
                 }
             })
             c.addView(chip("פתיחה", false) { ReaderActivity.open(this, g.path, 1) }, lp(WRAP, WRAP).m(0, dp(6), 0, 0))
+        }
+    }
+
+    private fun chooseScheme(dir: File) {
+        val n = dir.listFiles()?.count { it.isFile && it.name.endsWith(".pdf", true) } ?: 0
+        if (n == 0) { Sheet.info(this, "אין ספרים בתיקייה", "בתיקייה ${dir.name} אין קובצי PDF ישירות (רק תיקיות משנה). בחרו תיקייה שיש בה ספרים."); return }
+        Sheet.choice(this, "איך לסדר את \"${dir.name}\" ($n ספרים)?", Organizer.Scheme.values().map { it.name to it.title + "\n" + it.about }, null) { k ->
+            makePlan(dir, Organizer.Scheme.valueOf(k))
+        }
+    }
+
+    private fun makePlan(dir: File, scheme: Organizer.Scheme) {
+        run("מכין הצעה: ${scheme.title}…", { p -> plan = Organizer.plan(this, dir, scheme, p) }) { render() }
+    }
+
+    private fun renderPlan(p: Organizer.Plan) {
+        box.addView(label("תצוגה מקדימה: ${p.dir.name}", 17f, Col.TEXT, true).apply { setPadding(dp(4), dp(8), dp(4), 0) })
+        note("שיטה: ${p.scheme.title}. לחיצה על ✎ משנה את שם התיקייה, לחיצה על ספר מעבירה אותו לקבוצה אחרת.")
+        val other = FlowLayout(this)
+        Organizer.Scheme.values().filter { it != p.scheme }.forEach { sc -> other.addView(chip("נסו: ${sc.title}", false) { makePlan(p.dir, sc) }) }
+        box.addView(other, lp(MATCH, WRAP).m(0, 0, 0, dp(8)))
+        val moving = p.groups.sumOf { it.books.size }
+        val row = hbox()
+        row.addView(pill("החלת השינויים ($moving ספרים)") {
+            if (moving == 0) return@pill
+            Sheet.confirm(this, "החלת הסידור", "ייווצרו ${p.groups.count { it.books.isNotEmpty() && it.dest == null }} תיקיות ויועברו $moving ספרים. אפשר לבטל אחר כך בכפתור \"ביטול\".", "החלה") {
+                run("מסדר…", { pr -> val k = Organizer.applyPlan(p, pr); ui { toast("הועברו $k ספרים") } }) { plan = null; render() }
+            }
+        }, lp(0, WRAP, 1f).m(0, 0, dp(4), 0))
+        row.addView(pill("ביטול", false) { plan = null; render() }, lp(WRAP, WRAP))
+        box.addView(row, lp(MATCH, WRAP).m(0, 0, 0, dp(6)))
+
+        fun moveDialog(f: File, from: MutableList<File>) {
+            val opts = p.groups.mapIndexed { i, g -> i.toString() to "📁 " + g.name } + listOf("stay" to "להשאיר במקום", "new" to "➕ תיקייה חדשה…")
+            Sheet.choice(this, f.nameWithoutExtension, opts, null) { k ->
+                when (k) {
+                    "stay" -> { from.remove(f); p.stay.add(f); render() }
+                    "new" -> Sheet.input(this, "שם התיקייה החדשה", "", "שם") { n ->
+                        if (n.isNotBlank()) { from.remove(f); p.groups.add(Organizer.PGroup(n.trim(), mutableListOf(f))); render() }
+                    }
+                    else -> { from.remove(f); p.groups[k.toInt()].books.add(f); render() }
+                }
+            }
+        }
+
+        p.groups.filter { it.books.isNotEmpty() }.forEach { g ->
+            val c = card()
+            val top = hbox()
+            top.addView(label("📁 " + g.name + "  (${g.books.size})", 16f, Col.ACC, true), lp(0, WRAP, 1f))
+            if (g.dest == null) top.addView(label("✎", 20f, Col.ACC, true).apply {
+                setPadding(dp(10), 0, dp(10), 0)
+                setOnClickListener { Sheet.input(this@OrganizeActivity, "שם התיקייה", g.name, "שם") { n -> if (n.isNotBlank()) { g.name = n.trim(); render() } } }
+            })
+            top.addView(label("✕", 18f, Col.SUB, true).apply {
+                setPadding(dp(10), 0, dp(4), 0)
+                setOnClickListener { p.stay.addAll(g.books); g.books.clear(); render() }
+            })
+            c.addView(top)
+            g.books.toList().forEach { f ->
+                c.addView(label("   📖 " + f.nameWithoutExtension, 14.5f, Col.TEXT).apply {
+                    setPadding(0, dp(6), 0, dp(6))
+                    setOnClickListener { moveDialog(f, g.books) }
+                })
+            }
+        }
+        if (p.stay.isNotEmpty()) {
+            val c = card()
+            c.addView(label("נשארים במקום (${p.stay.size})", 15f, Col.SUB, true))
+            p.stay.toList().forEach { f ->
+                c.addView(label("   📖 " + f.nameWithoutExtension, 14.5f, Col.SUB).apply {
+                    setPadding(0, dp(6), 0, dp(6)); setOnClickListener { moveDialog(f, p.stay) }
+                })
+            }
         }
     }
 
@@ -2247,7 +2333,7 @@ class OrganizeActivity : BaseActivity() {
         val n = Organizer.undoCount()
         if (n == 0) { Sheet.info(this, "אין מה לבטל", "לא בוצעו העברות או שינויי שמות מאז הפעולה האחרונה."); return }
         Sheet.confirm(this, "ביטול הפעולה האחרונה", "להחזיר $n קבצים/תיקיות למקום ולשם הקודמים?", "ביטול הפעולה") {
-            run("מחזיר…", { _ -> val k = Organizer.undo(); ui { toast("הוחזרו $k") } }) { dups = null; suggestions = null; renames = null; render() }
+            run("מחזיר…", { _ -> val k = Organizer.undo(); ui { toast("הוחזרו $k") } }) { dups = null; suggestions = null; renames = null; plan = null; render() }
         }
     }
 
@@ -2735,6 +2821,143 @@ object Organizer {
         if (!renameRaw(r.file, dest)) return false
         val log = Prefs.list("moveLog"); log.add(0, "R|${dest.absolutePath}|$was"); Prefs.putList("moveLog", log.take(5000))
         return true
+    }
+
+    // ---------------- sorting one folder, with a preview ----------------
+
+    enum class Scheme(val title: String, val about: String) {
+        TOPIC("לפי נושא (לפי התוכן)", "התוכנה קוראת את הספרים, מקבצת ספרים שעוסקים באותו נושא, ונותנת לכל קבוצה שם"),
+        SERIES("לפי סדרה / שם משותף", "ספרים ששמם מתחיל אותו דבר (לקוטי שיחות חלק א, ב…) נכנסים לתיקייה אחת"),
+        LETTER("לפי האות הראשונה", "תיקייה לכל אות: א, ב, ג…"),
+        LIBRARY("לתיקיות הקיימות במאגר", "כל ספר עובר לתיקייה המתאימה לו במאגר (הלכה, חסידות…)"),
+    }
+
+    class PGroup(var name: String, val books: MutableList<File>, var dest: String? = null)
+
+    /** A proposed arrangement of the PDFs of one folder. The user edits it, then [applyPlan]. */
+    class Plan(val dir: File, val scheme: Scheme, val groups: MutableList<PGroup>, val stay: MutableList<File>)
+
+    private fun pdfsIn(dir: File) = dir.listFiles()?.filter { it.isFile && it.name.endsWith(".pdf", true) }?.sortedBy { it.name } ?: emptyList()
+
+    fun plan(c: Context, dir: File, scheme: Scheme, progress: (String) -> Unit): Plan {
+        val files = pdfsIn(dir)
+        val stay = ArrayList<File>()
+        val groups = ArrayList<PGroup>()
+        when (scheme) {
+            Scheme.LETTER -> {
+                files.groupBy { f -> f.nameWithoutExtension.trim().firstOrNull { it.isLetterOrDigit() }?.let { ch ->
+                    if (Heb.isHebLetter(ch)) "ךםןףץ".indexOf(ch).let { i -> if (i >= 0) "כמנפצ"[i] else ch }.toString()
+                    else if (ch.isDigit()) "0-9" else ch.uppercaseChar().toString()
+                } ?: "אחר" }.toSortedMap().forEach { (k, v) -> groups.add(PGroup(k, v.toMutableList())) }
+            }
+            Scheme.SERIES -> {
+                val left = files.toMutableList()
+                for (len in 4 downTo 1) {
+                    val byKey = left.groupBy { f -> f.nameWithoutExtension.split(Regex("[\\s_\\-,]+")).filter { it.isNotBlank() }.let { w -> if (w.size > len) w.take(len).joinToString(" ") else "" } }
+                    byKey.forEach { (k, v) ->
+                        if (k.isNotEmpty() && v.size >= 2 && k.count { it.isLetter() } >= 3 && !(len == 1 && Heb.words(k).firstOrNull() in setOf("ספר", "חלק", "כרך"))) {
+                            groups.add(PGroup(safeName(k), v.toMutableList())); left.removeAll(v)
+                        }
+                    }
+                }
+                stay.addAll(left)
+            }
+            Scheme.TOPIC -> topicGroups(files, progress, groups, stay)
+            Scheme.LIBRARY -> {
+                val targets = buildTargets(c, progress)
+                buildTargetsCache = targets
+                val by = LinkedHashMap<String, PGroup>()
+                files.forEachIndexed { i, f ->
+                    progress("מנתח ספרים… ${i + 1}/${files.size}")
+                    val (t, score) = classify(f.absolutePath, f.nameWithoutExtension, targets)
+                    if (t == null || score < 0.05f || t.dir == dir.absolutePath) stay.add(f)
+                    else by.getOrPut(t.dir) { PGroup(t.cat.joinToString(" › "), ArrayList(), t.dir) }.books.add(f)
+                }
+                groups.addAll(by.values)
+            }
+        }
+        return Plan(dir, scheme, groups.sortedByDescending { it.books.size }.toMutableList(), stay)
+    }
+
+    private fun topicGroups(files: List<File>, progress: (String) -> Unit, groups: MutableList<PGroup>, stay: MutableList<File>) {
+        if (files.size < 4) { stay.addAll(files); return }
+        val bags = files.mapIndexed { i, f -> progress("קורא את הספרים… ${i + 1}/${files.size}"); bookBag(f.absolutePath, f.nameWithoutExtension) }
+        val df = HashMap<String, Int>()
+        bags.forEach { b -> b.keys.forEach { df[it] = (df[it] ?: 0) + 1 } }
+        val n = files.size
+        // words that appear in a few books but not in almost all of them describe a topic
+        val vecs = bags.map { b ->
+            val v = HashMap<String, Float>()
+            var s = 0f
+            for ((w, c) in b) {
+                val d = df[w] ?: 1
+                if (d < 2 || d > n * 0.6) continue
+                val x = (1 + ln(c.toDouble())).toFloat() * ln(n.toDouble() / d).toFloat()
+                v[w] = x; s += x * x
+            }
+            val nn = sqrt(s).coerceAtLeast(1e-6f)
+            for (k in v.keys.toList()) v[k] = v[k]!! / nn
+            v
+        }
+        fun dot(a: Map<String, Float>, b: Map<String, Float>): Float { var d = 0f; val (x, y) = if (a.size < b.size) a to b else b to a; for ((w, v) in x) y[w]?.let { d += v * it }; return d }
+        val k = sqrt(n / 2.0).toInt().coerceIn(2, 12)
+        // farthest-point start, then a few rounds of k-means on the sphere
+        val centers = ArrayList<Map<String, Float>>()
+        centers.add(vecs[0])
+        while (centers.size < k) {
+            val far = vecs.indices.minByOrNull { i -> centers.maxOf { dot(vecs[i], it) } } ?: break
+            centers.add(vecs[far])
+        }
+        var assign = IntArray(n)
+        repeat(8) { round ->
+            progress("מקבץ לפי נושאים… ${round + 1}/8")
+            assign = IntArray(n) { i -> centers.indices.maxByOrNull { dot(vecs[i], centers[it]) } ?: 0 }
+            for (ci in centers.indices) {
+                val m = HashMap<String, Float>()
+                vecs.indices.filter { assign[it] == ci }.forEach { i -> for ((w, v) in vecs[i]) m[w] = (m[w] ?: 0f) + v }
+                val top = m.entries.sortedByDescending { it.value }.take(300)
+                var s = 0f; top.forEach { s += it.value * it.value }
+                val nn = sqrt(s).coerceAtLeast(1e-6f)
+                centers[ci] = top.associate { it.key to it.value / nn }
+            }
+        }
+        for (ci in centers.indices) {
+            val members = files.indices.filter { assign[it] == ci && dot(vecs[it], centers[ci]) > 0.05f }
+            val loose = files.indices.filter { assign[it] == ci && it !in members }
+            loose.forEach { stay.add(files[it]) }
+            if (members.size < 2) { members.forEach { stay.add(files[it]) }; continue }
+            groups.add(PGroup(topicName(members.map { files[it] }, centers[ci], centers), members.map { files[it] }.toMutableList()))
+        }
+    }
+
+    /** Name for a topic group: a shared title beginning, otherwise its two most typical words. */
+    private fun topicName(fs: List<File>, center: Map<String, Float>, all: List<Map<String, Float>>): String {
+        val tw = fs.map { f -> f.nameWithoutExtension.split(Regex("[\\s_\\-,]+")).filter { it.isNotBlank() } }
+        for (len in 3 downTo 1) {
+            val cnt = tw.filter { it.size >= len }.groupingBy { it.take(len).joinToString(" ") }.eachCount()
+            val b = cnt.maxByOrNull { it.value }
+            if (b != null && b.value >= fs.size * 0.6 && b.key.count { Heb.isHebLetter(it) } >= 3) return safeName(b.key)
+        }
+        val words = center.entries.sortedByDescending { e -> e.value - all.filter { it !== center }.maxOfOrNull { it[e.key] ?: 0f }.let { it ?: 0f } * 0.5f }
+            .map { it.key }.filter { w -> w.length >= 3 && w.count { Heb.isHebLetter(it) } >= 3 }.take(2)
+        return safeName(if (words.isEmpty()) "נושא" else words.joinToString(" "))
+    }
+
+    /** Make the planned changes on the device. */
+    fun applyPlan(p: Plan, progress: (String) -> Unit): Int {
+        beginBatch()
+        var moved = 0
+        val all = p.groups.sumOf { it.books.size }
+        for (g in p.groups) {
+            if (g.books.isEmpty()) continue
+            val dest = File(g.dest ?: File(p.dir, safeName(g.name)).absolutePath)
+            for (f in g.books) {
+                progress("מעביר… ${moved + 1}/$all")
+                if (f.parentFile?.absolutePath == dest.absolutePath) continue
+                if (moveBook(f.absolutePath, dest) != null) moved++
+            }
+        }
+        return moved
     }
 }
 ````

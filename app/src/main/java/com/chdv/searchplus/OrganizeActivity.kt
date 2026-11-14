@@ -20,6 +20,7 @@ class OrganizeActivity : BaseActivity() {
     private var suggestions: List<Organizer.Suggestion>? = null
     private var targets: List<Organizer.Target> = emptyList()
     private var renames: List<Organizer.Rename>? = null
+    private var plan: Organizer.Plan? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,7 +37,7 @@ class OrganizeActivity : BaseActivity() {
     private fun render() {
         tabs.removeAllViews()
         listOf("ספרים כפולים", "סידור לתיקיות", "שמות חכמים").forEachIndexed { i, t ->
-            tabs.addView(chip(t, i == tab) { if (!busy) { tab = i; render() } }, lp(0, WRAP, 1f).m(dp(3), 0, dp(3), 0))
+            tabs.addView(chip(t, i == tab) { if (!busy) { tab = i; plan = null; render() } }, lp(0, WRAP, 1f).m(dp(3), 0, dp(3), 0))
         }
         box.removeAllViews()
         when (tab) { 0 -> renderDups(); 1 -> renderSort(); else -> renderNames() }
@@ -123,8 +124,16 @@ class OrganizeActivity : BaseActivity() {
     // ---------------- smart sorting ----------------
 
     private fun renderSort() {
+        plan?.let { renderPlan(it); return }
         val s = suggestions
         if (s == null) {
+            box.addView(label("סידור תיקייה – עם תצוגה מקדימה", 17f, Col.TEXT, true).apply { setPadding(dp(4), dp(10), dp(4), dp(2)) })
+            note("בוחרים תיקייה ושיטת מיון. התוכנה מראה איך התיקייה תיראה אחרי הסידור; אפשר לשנות שמות של תיקיות, להעביר ספר מקבוצה לקבוצה או לבטל קבוצה – ורק כשמאשרים, הקבצים זזים. לא אהבתם? בוחרים שיטה אחרת.")
+            box.addView(pill("בחירת תיקייה לסידור") {
+                FolderPicker.pick(this) { d -> chooseScheme(File(d)) }
+            }, lp(MATCH, WRAP).m(0, dp(4), 0, dp(4)))
+            box.addView(divider(), lp(MATCH, 1).m(0, dp(14), 0, dp(4)))
+            box.addView(label("סידור ספרים לתיקיות המאגר", 17f, Col.TEXT, true).apply { setPadding(dp(4), dp(10), dp(4), dp(2)) })
             note("התוכנה לומדת מה יש בכל תיקייה במאגר (לפי התוכן של הספרים שכבר נמצאים בה ולפי שם התיקייה), ומציעה לכל ספר את התיקייה המתאימה לו – למשל ספר על הלכות שבת → הלכה › שבת.\n\nאתם רואים את כל ההצעות, משנים או מבטלים מה שרוצים, ורק אז הקבצים מועברים. אפשר לבטל את כל הסידור בכפתור \"ביטול\".")
             box.addView(pill("ספרים שלא נמצאים בשום תיקייה") { doSuggest(null, false) }, lp(MATCH, WRAP).m(0, dp(4), 0, dp(4)))
             box.addView(pill("ספרים מתיקייה אחרת (למשל הורדות)…", false) {
@@ -155,6 +164,79 @@ class OrganizeActivity : BaseActivity() {
                 }
             })
             c.addView(chip("פתיחה", false) { ReaderActivity.open(this, g.path, 1) }, lp(WRAP, WRAP).m(0, dp(6), 0, 0))
+        }
+    }
+
+    private fun chooseScheme(dir: File) {
+        val n = dir.listFiles()?.count { it.isFile && it.name.endsWith(".pdf", true) } ?: 0
+        if (n == 0) { Sheet.info(this, "אין ספרים בתיקייה", "בתיקייה ${dir.name} אין קובצי PDF ישירות (רק תיקיות משנה). בחרו תיקייה שיש בה ספרים."); return }
+        Sheet.choice(this, "איך לסדר את \"${dir.name}\" ($n ספרים)?", Organizer.Scheme.values().map { it.name to it.title + "\n" + it.about }, null) { k ->
+            makePlan(dir, Organizer.Scheme.valueOf(k))
+        }
+    }
+
+    private fun makePlan(dir: File, scheme: Organizer.Scheme) {
+        run("מכין הצעה: ${scheme.title}…", { p -> plan = Organizer.plan(this, dir, scheme, p) }) { render() }
+    }
+
+    private fun renderPlan(p: Organizer.Plan) {
+        box.addView(label("תצוגה מקדימה: ${p.dir.name}", 17f, Col.TEXT, true).apply { setPadding(dp(4), dp(8), dp(4), 0) })
+        note("שיטה: ${p.scheme.title}. לחיצה על ✎ משנה את שם התיקייה, לחיצה על ספר מעבירה אותו לקבוצה אחרת.")
+        val other = FlowLayout(this)
+        Organizer.Scheme.values().filter { it != p.scheme }.forEach { sc -> other.addView(chip("נסו: ${sc.title}", false) { makePlan(p.dir, sc) }) }
+        box.addView(other, lp(MATCH, WRAP).m(0, 0, 0, dp(8)))
+        val moving = p.groups.sumOf { it.books.size }
+        val row = hbox()
+        row.addView(pill("החלת השינויים ($moving ספרים)") {
+            if (moving == 0) return@pill
+            Sheet.confirm(this, "החלת הסידור", "ייווצרו ${p.groups.count { it.books.isNotEmpty() && it.dest == null }} תיקיות ויועברו $moving ספרים. אפשר לבטל אחר כך בכפתור \"ביטול\".", "החלה") {
+                run("מסדר…", { pr -> val k = Organizer.applyPlan(p, pr); ui { toast("הועברו $k ספרים") } }) { plan = null; render() }
+            }
+        }, lp(0, WRAP, 1f).m(0, 0, dp(4), 0))
+        row.addView(pill("ביטול", false) { plan = null; render() }, lp(WRAP, WRAP))
+        box.addView(row, lp(MATCH, WRAP).m(0, 0, 0, dp(6)))
+
+        fun moveDialog(f: File, from: MutableList<File>) {
+            val opts = p.groups.mapIndexed { i, g -> i.toString() to "📁 " + g.name } + listOf("stay" to "להשאיר במקום", "new" to "➕ תיקייה חדשה…")
+            Sheet.choice(this, f.nameWithoutExtension, opts, null) { k ->
+                when (k) {
+                    "stay" -> { from.remove(f); p.stay.add(f); render() }
+                    "new" -> Sheet.input(this, "שם התיקייה החדשה", "", "שם") { n ->
+                        if (n.isNotBlank()) { from.remove(f); p.groups.add(Organizer.PGroup(n.trim(), mutableListOf(f))); render() }
+                    }
+                    else -> { from.remove(f); p.groups[k.toInt()].books.add(f); render() }
+                }
+            }
+        }
+
+        p.groups.filter { it.books.isNotEmpty() }.forEach { g ->
+            val c = card()
+            val top = hbox()
+            top.addView(label("📁 " + g.name + "  (${g.books.size})", 16f, Col.ACC, true), lp(0, WRAP, 1f))
+            if (g.dest == null) top.addView(label("✎", 20f, Col.ACC, true).apply {
+                setPadding(dp(10), 0, dp(10), 0)
+                setOnClickListener { Sheet.input(this@OrganizeActivity, "שם התיקייה", g.name, "שם") { n -> if (n.isNotBlank()) { g.name = n.trim(); render() } } }
+            })
+            top.addView(label("✕", 18f, Col.SUB, true).apply {
+                setPadding(dp(10), 0, dp(4), 0)
+                setOnClickListener { p.stay.addAll(g.books); g.books.clear(); render() }
+            })
+            c.addView(top)
+            g.books.toList().forEach { f ->
+                c.addView(label("   📖 " + f.nameWithoutExtension, 14.5f, Col.TEXT).apply {
+                    setPadding(0, dp(6), 0, dp(6))
+                    setOnClickListener { moveDialog(f, g.books) }
+                })
+            }
+        }
+        if (p.stay.isNotEmpty()) {
+            val c = card()
+            c.addView(label("נשארים במקום (${p.stay.size})", 15f, Col.SUB, true))
+            p.stay.toList().forEach { f ->
+                c.addView(label("   📖 " + f.nameWithoutExtension, 14.5f, Col.SUB).apply {
+                    setPadding(0, dp(6), 0, dp(6)); setOnClickListener { moveDialog(f, p.stay) }
+                })
+            }
         }
     }
 
@@ -216,7 +298,7 @@ class OrganizeActivity : BaseActivity() {
         val n = Organizer.undoCount()
         if (n == 0) { Sheet.info(this, "אין מה לבטל", "לא בוצעו העברות או שינויי שמות מאז הפעולה האחרונה."); return }
         Sheet.confirm(this, "ביטול הפעולה האחרונה", "להחזיר $n קבצים/תיקיות למקום ולשם הקודמים?", "ביטול הפעולה") {
-            run("מחזיר…", { _ -> val k = Organizer.undo(); ui { toast("הוחזרו $k") } }) { dups = null; suggestions = null; renames = null; render() }
+            run("מחזיר…", { _ -> val k = Organizer.undo(); ui { toast("הוחזרו $k") } }) { dups = null; suggestions = null; renames = null; plan = null; render() }
         }
     }
 

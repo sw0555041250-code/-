@@ -476,4 +476,141 @@ object Organizer {
         val log = Prefs.list("moveLog"); log.add(0, "R|${dest.absolutePath}|$was"); Prefs.putList("moveLog", log.take(5000))
         return true
     }
+
+    // ---------------- sorting one folder, with a preview ----------------
+
+    enum class Scheme(val title: String, val about: String) {
+        TOPIC("לפי נושא (לפי התוכן)", "התוכנה קוראת את הספרים, מקבצת ספרים שעוסקים באותו נושא, ונותנת לכל קבוצה שם"),
+        SERIES("לפי סדרה / שם משותף", "ספרים ששמם מתחיל אותו דבר (לקוטי שיחות חלק א, ב…) נכנסים לתיקייה אחת"),
+        LETTER("לפי האות הראשונה", "תיקייה לכל אות: א, ב, ג…"),
+        LIBRARY("לתיקיות הקיימות במאגר", "כל ספר עובר לתיקייה המתאימה לו במאגר (הלכה, חסידות…)"),
+    }
+
+    class PGroup(var name: String, val books: MutableList<File>, var dest: String? = null)
+
+    /** A proposed arrangement of the PDFs of one folder. The user edits it, then [applyPlan]. */
+    class Plan(val dir: File, val scheme: Scheme, val groups: MutableList<PGroup>, val stay: MutableList<File>)
+
+    private fun pdfsIn(dir: File) = dir.listFiles()?.filter { it.isFile && it.name.endsWith(".pdf", true) }?.sortedBy { it.name } ?: emptyList()
+
+    fun plan(c: Context, dir: File, scheme: Scheme, progress: (String) -> Unit): Plan {
+        val files = pdfsIn(dir)
+        val stay = ArrayList<File>()
+        val groups = ArrayList<PGroup>()
+        when (scheme) {
+            Scheme.LETTER -> {
+                files.groupBy { f -> f.nameWithoutExtension.trim().firstOrNull { it.isLetterOrDigit() }?.let { ch ->
+                    if (Heb.isHebLetter(ch)) "ךםןףץ".indexOf(ch).let { i -> if (i >= 0) "כמנפצ"[i] else ch }.toString()
+                    else if (ch.isDigit()) "0-9" else ch.uppercaseChar().toString()
+                } ?: "אחר" }.toSortedMap().forEach { (k, v) -> groups.add(PGroup(k, v.toMutableList())) }
+            }
+            Scheme.SERIES -> {
+                val left = files.toMutableList()
+                for (len in 4 downTo 1) {
+                    val byKey = left.groupBy { f -> f.nameWithoutExtension.split(Regex("[\\s_\\-,]+")).filter { it.isNotBlank() }.let { w -> if (w.size > len) w.take(len).joinToString(" ") else "" } }
+                    byKey.forEach { (k, v) ->
+                        if (k.isNotEmpty() && v.size >= 2 && k.count { it.isLetter() } >= 3 && !(len == 1 && Heb.words(k).firstOrNull() in setOf("ספר", "חלק", "כרך"))) {
+                            groups.add(PGroup(safeName(k), v.toMutableList())); left.removeAll(v)
+                        }
+                    }
+                }
+                stay.addAll(left)
+            }
+            Scheme.TOPIC -> topicGroups(files, progress, groups, stay)
+            Scheme.LIBRARY -> {
+                val targets = buildTargets(c, progress)
+                buildTargetsCache = targets
+                val by = LinkedHashMap<String, PGroup>()
+                files.forEachIndexed { i, f ->
+                    progress("מנתח ספרים… ${i + 1}/${files.size}")
+                    val (t, score) = classify(f.absolutePath, f.nameWithoutExtension, targets)
+                    if (t == null || score < 0.05f || t.dir == dir.absolutePath) stay.add(f)
+                    else by.getOrPut(t.dir) { PGroup(t.cat.joinToString(" › "), ArrayList(), t.dir) }.books.add(f)
+                }
+                groups.addAll(by.values)
+            }
+        }
+        return Plan(dir, scheme, groups.sortedByDescending { it.books.size }.toMutableList(), stay)
+    }
+
+    private fun topicGroups(files: List<File>, progress: (String) -> Unit, groups: MutableList<PGroup>, stay: MutableList<File>) {
+        if (files.size < 4) { stay.addAll(files); return }
+        val bags = files.mapIndexed { i, f -> progress("קורא את הספרים… ${i + 1}/${files.size}"); bookBag(f.absolutePath, f.nameWithoutExtension) }
+        val df = HashMap<String, Int>()
+        bags.forEach { b -> b.keys.forEach { df[it] = (df[it] ?: 0) + 1 } }
+        val n = files.size
+        // words that appear in a few books but not in almost all of them describe a topic
+        val vecs = bags.map { b ->
+            val v = HashMap<String, Float>()
+            var s = 0f
+            for ((w, c) in b) {
+                val d = df[w] ?: 1
+                if (d < 2 || d > n * 0.6) continue
+                val x = (1 + ln(c.toDouble())).toFloat() * ln(n.toDouble() / d).toFloat()
+                v[w] = x; s += x * x
+            }
+            val nn = sqrt(s).coerceAtLeast(1e-6f)
+            for (k in v.keys.toList()) v[k] = v[k]!! / nn
+            v
+        }
+        fun dot(a: Map<String, Float>, b: Map<String, Float>): Float { var d = 0f; val (x, y) = if (a.size < b.size) a to b else b to a; for ((w, v) in x) y[w]?.let { d += v * it }; return d }
+        val k = sqrt(n / 2.0).toInt().coerceIn(2, 12)
+        // farthest-point start, then a few rounds of k-means on the sphere
+        val centers = ArrayList<Map<String, Float>>()
+        centers.add(vecs[0])
+        while (centers.size < k) {
+            val far = vecs.indices.minByOrNull { i -> centers.maxOf { dot(vecs[i], it) } } ?: break
+            centers.add(vecs[far])
+        }
+        var assign = IntArray(n)
+        repeat(8) { round ->
+            progress("מקבץ לפי נושאים… ${round + 1}/8")
+            assign = IntArray(n) { i -> centers.indices.maxByOrNull { dot(vecs[i], centers[it]) } ?: 0 }
+            for (ci in centers.indices) {
+                val m = HashMap<String, Float>()
+                vecs.indices.filter { assign[it] == ci }.forEach { i -> for ((w, v) in vecs[i]) m[w] = (m[w] ?: 0f) + v }
+                val top = m.entries.sortedByDescending { it.value }.take(300)
+                var s = 0f; top.forEach { s += it.value * it.value }
+                val nn = sqrt(s).coerceAtLeast(1e-6f)
+                centers[ci] = top.associate { it.key to it.value / nn }
+            }
+        }
+        for (ci in centers.indices) {
+            val members = files.indices.filter { assign[it] == ci && dot(vecs[it], centers[ci]) > 0.05f }
+            val loose = files.indices.filter { assign[it] == ci && it !in members }
+            loose.forEach { stay.add(files[it]) }
+            if (members.size < 2) { members.forEach { stay.add(files[it]) }; continue }
+            groups.add(PGroup(topicName(members.map { files[it] }, centers[ci], centers), members.map { files[it] }.toMutableList()))
+        }
+    }
+
+    /** Name for a topic group: a shared title beginning, otherwise its two most typical words. */
+    private fun topicName(fs: List<File>, center: Map<String, Float>, all: List<Map<String, Float>>): String {
+        val tw = fs.map { f -> f.nameWithoutExtension.split(Regex("[\\s_\\-,]+")).filter { it.isNotBlank() } }
+        for (len in 3 downTo 1) {
+            val cnt = tw.filter { it.size >= len }.groupingBy { it.take(len).joinToString(" ") }.eachCount()
+            val b = cnt.maxByOrNull { it.value }
+            if (b != null && b.value >= fs.size * 0.6 && b.key.count { Heb.isHebLetter(it) } >= 3) return safeName(b.key)
+        }
+        val words = center.entries.sortedByDescending { e -> e.value - all.filter { it !== center }.maxOfOrNull { it[e.key] ?: 0f }.let { it ?: 0f } * 0.5f }
+            .map { it.key }.filter { w -> w.length >= 3 && w.count { Heb.isHebLetter(it) } >= 3 }.take(2)
+        return safeName(if (words.isEmpty()) "נושא" else words.joinToString(" "))
+    }
+
+    /** Make the planned changes on the device. */
+    fun applyPlan(p: Plan, progress: (String) -> Unit): Int {
+        beginBatch()
+        var moved = 0
+        val all = p.groups.sumOf { it.books.size }
+        for (g in p.groups) {
+            if (g.books.isEmpty()) continue
+            val dest = File(g.dest ?: File(p.dir, safeName(g.name)).absolutePath)
+            for (f in g.books) {
+                progress("מעביר… ${moved + 1}/$all")
+                if (f.parentFile?.absolutePath == dest.absolutePath) continue
+                if (moveBook(f.absolutePath, dest) != null) moved++
+            }
+        }
+        return moved
+    }
 }

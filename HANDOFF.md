@@ -28,9 +28,11 @@
 | `BrowseActivity.kt` | עיון בתיקיות וספרים + `FolderPicker` (זיכרון פנימי וכרטיס זיכרון) |
 | `SettingsActivity.kt` | כל ההגדרות: תיקיות, סריקה, OCR, משמעות, פתיחה, גודל כתב, עדכונים, אודות |
 | `Updater.kt` | עדכון עצמי מ-`releases/latest` של המאגר |
+| `Organizer.kt` | סידור המאגר על המכשיר: כפולים לפי תוכן (hash לקובץ זהה + טביעת אצבע של רצפי 5 מילים / bottom‑k MinHash לתוכן זהה), סיווג ספר לתיקייה (TF‑IDF של כל תיקייה מול הספר, יורד בעץ התיקיות), תוכנית סידור לתיקייה עם תצוגה מקדימה (`Plan`: לפי נושא – k‑means על התוכן, לפי סדרה, לפי אות, לתיקיות המאגר), שמות חכמים (דף שער – הגופן הגדול / מטא‑דאטה; שם תיקייה לפי הספרים), העברה/שינוי שם עם עדכון האינדקס ויומן ביטול (`moveLog`) |
+| `OrganizeActivity.kt` | המסך של סידור המאגר: לשוניות כפולים / סידור לתיקיות (כולל תצוגה מקדימה ועריכה) / שמות חכמים, וכפתור "ביטול" |
 
 ## מפתחות Prefs
-`roots`, `semanticRoots`, `match` (PHRASE/ALL/NEAR/ANY), `prefixes`, `sort`, `lastSemantic`, `semantic`, `ocrAuto`, `autoScan`, `sortByPosition`, `openWith` (internal/external), `fontSize`, `autoUpdate`, `lastUpdateCheck`, `favs` (`path|page`), `history`, `recent` (`path|page`).
+`roots`, `semanticRoots`, `match` (PHRASE/ALL/NEAR/ANY), `prefixes`, `sort`, `lastSemantic`, `semantic`, `ocrAuto`, `autoScan`, `sortByPosition`, `openWith` (internal/external), `fontSize`, `autoUpdate`, `lastUpdateCheck`, `favs` (`path|page`), `history`, `recent` (`path|page`), `moveLog` (`M|now|wasDir` או `R|now|wasPath`).
 
 ## רעיונות להמשך
 - הדגשה גם בעמודי OCR (מיקומי מילים מ-Tesseract ResultIterator).
