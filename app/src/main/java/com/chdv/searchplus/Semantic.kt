@@ -31,7 +31,7 @@ object Semantic {
     const val DIM = 384
     private const val REC = 4 + 4 + DIM // pageId, scale, int8 vector
     private const val WORDS_PER_CHUNK = 90
-    private const val MAX_CHUNKS = 6
+    private const val MAX_CHUNKS = 4
 
     fun dir(c: Context) = File(c.filesDir, "e5")
     private fun modelFile(c: Context) = File(dir(c), "model_quantized.onnx")

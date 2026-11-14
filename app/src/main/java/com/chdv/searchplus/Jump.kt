@@ -21,6 +21,9 @@ object Jump {
         return hay.contains(" $p ") || hay.contains(" ב$p ") || hay.contains(" ו$p ") || hay.contains(" ה$p ") || hay.contains(" מ$p ") || hay.contains(" ל$p ")
     }
 
+    /** Letters without the vowel letters – so "ליקוטי" = "לקוטי", "שולחן" = "שלחן". */
+    private fun key(w: String) = w.filter { it !in "אהויע" }.replace('ך', 'כ').replace('ם', 'מ').replace('ן', 'נ').replace('ף', 'פ').replace('ץ', 'צ')
+
     fun resolve(ref: Ref): List<Target> {
         val db = Db.get()
         val books = db.books().values
@@ -48,7 +51,8 @@ object Jump {
                 }
                 Ref.Kind.GENERIC -> {
                     val words = RefParser.normalize(ref.work).split(' ').filter { it.length >= 2 }
-                    val hit = words.count { has(title, it) || has(path, it) }
+                    val tk = (title + path).split(' ').filter { it.length >= 2 }.map(::key).toSet()
+                    val hit = words.count { has(title, it) || has(path, it) || (key(it).length >= 2 && key(it) in tk) }
                     if (hit < maxOf(1, (words.size + 1) / 2)) continue
                     score += hit * 5 + (if (words.all { has(title, it) }) 10 else 0)
                 }
@@ -79,6 +83,7 @@ object Jump {
                 return Target(b, est ?: (target + 3).coerceIn(1, count), est != null && anchors.size >= 4, ref, target)
             }
             Ref.Kind.SICHOS -> {
+                ref.page?.let { pr -> val (pg, ok) = PageFinder.pageOfPrinted(pages, pr, count); return Target(b, pg, ok, ref, null) }
                 val parsha = ref.parsha ?: return Target(b, 1, true, ref, null)
                 val words = RefParser.normalize(parsha).split(' ')
                 val starts = pages.keys.sorted().filter { PageFinder.headerHas(pages[it]!!, words) }
@@ -101,7 +106,7 @@ object Jump {
                 ref.chapter?.let { c -> sorted.firstOrNull { PageFinder.hasNumbered(pages[it]!!, "פרק", c) }?.let { return Target(b, it, true, ref, null) } }
                 ref.siman?.let { s -> sorted.firstOrNull { PageFinder.hasNumbered(pages[it]!!, "סימן", s) }?.let { return Target(b, it, true, ref, null) } }
                 ref.parsha?.let { pr -> sorted.firstOrNull { PageFinder.headerHas(pages[it]!!, RefParser.normalize(pr).split(' ')) }?.let { return Target(b, it, true, ref, null) } }
-                ref.page?.let { return Target(b, it.coerceIn(1, count), false, ref, null) }
+                ref.page?.let { pr -> val (pg, ok) = PageFinder.pageOfPrinted(pages, pr, count); return Target(b, pg, ok, ref, null) }
                 return Target(b, 1, false, ref, null)
             }
         }

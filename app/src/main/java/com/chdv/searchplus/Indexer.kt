@@ -29,7 +29,9 @@ import java.net.URL
 /** Live progress, read by the screens. */
 object Progress {
     @Volatile var running = false
+    @Volatile var phaseStart = 0L
     @Volatile var phase = ""
+        set(v) { if (v != field) { phaseStart = System.currentTimeMillis() }; field = v }
     @Volatile var done = 0
     @Volatile var total = 0
     @Volatile var current = ""
@@ -45,6 +47,11 @@ object Progress {
     fun text(): String = if (!running) "" else buildString {
         append(phase)
         if (total > 0) append("  $done / $total")
+        val el = System.currentTimeMillis() - phaseStart
+        if (total > 0 && done > 0 && done < total && el > 60_000) {
+            val left = el / done * (total - done) / 60_000
+            append(if (left >= 60) "  · עוד כ-${left / 60} שעות ${left % 60} דק׳" else "  · עוד כ-${left.coerceAtLeast(1)} דק׳")
+        }
         if (current.isNotEmpty()) append("\n").append(current)
     }
 }
@@ -335,7 +342,7 @@ class IndexService : Service() {
         if (Progress.running) return START_NOT_STICKY
         Progress.running = true
         wake = (getSystemService(Context.POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "searchplus:index").apply {
-            setReferenceCounted(false); acquire(6 * 3600 * 1000L)
+            setReferenceCounted(false); acquire(16 * 3600 * 1000L)
         }
         val nm = getSystemService(NotificationManager::class.java)
         val ticker = object : Runnable {

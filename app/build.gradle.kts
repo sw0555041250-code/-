@@ -3,8 +3,8 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-// The app moved to a new repository whose build numbers start again from 1; +100 keeps every new build above the old ones.
-val buildNumber: Int = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt() + 100
+// The app moved to a new repository whose build numbers start again from 1; +200 keeps every new build above the old ones (two moves: chdv770-ctrl/Search-Plus, then sw0555041250-code/-).
+val buildNumber: Int = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt() + 200
 val hasKey = file("searchplus.p12").exists()
 
 android {

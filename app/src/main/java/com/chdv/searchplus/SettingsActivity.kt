@@ -79,7 +79,7 @@ class SettingsActivity : BaseActivity() {
         toggle("זיהוי אוטומטי של כל העמודים הסרוקים", "רץ ברקע אחרי קריאת הספרים. במכשיר חלש זה איטי (כמה שניות לעמוד)", "ocrAuto", true)
 
         section("חיפוש קולי 🎤")
-        val eng = Prefs.s("voiceEngine", "auto")
+        val eng = Prefs.s("voiceEngine", "whisper")
         val sysOk = VoiceSearch.systemAvailable(this)
         item("מנוע זיהוי הדיבור", when (eng) {
             "system" -> "שירות הדיבור של המכשיר (צריך אינטרנט)"
@@ -87,8 +87,8 @@ class SettingsActivity : BaseActivity() {
             else -> "אוטומטי: " + if (sysOk && !Prefs.b("systemFailed", false)) "שירות המכשיר, ואם הוא לא עובד – בתוך המכשיר" else "בתוך המכשיר (לא נמצא שירות דיבור במכשיר)"
         }) {
             Sheet.choice(this, "איך לזהות את הדיבור?", listOf(
-                "auto" to "אוטומטי (מומלץ)",
-                "whisper" to "תמיד בתוך המכשיר – Whisper, בלי אינטרנט",
+                "whisper" to "בתוך המכשיר – Whisper, בלי אינטרנט (מומלץ)",
+                "auto" to "אוטומטי: שירות המכשיר כשיש אינטרנט, אחרת בתוך המכשיר",
                 "system" to "שירות הדיבור של המכשיר" + if (sysOk) "" else " (לא נמצא במכשיר הזה)",
             ), eng) { Prefs.put("voiceEngine", it); Prefs.put("systemFailed", false); render() }
         }
@@ -117,6 +117,12 @@ class SettingsActivity : BaseActivity() {
         item(if (semReady) "מודל המשמעות מותקן ✓" else "הורדת מודל המשמעות (כ-120MB)",
             if (semReady) "וקטורים באינדקס: ${Semantic.vectorCount(this)} · לחיצה לניהול" + (Semantic.lastError.takeIf { it.isNotEmpty() }?.let { "\n⚠ $it" } ?: "")
             else "מאפשר לכתוב שאלה או רעיון ולמצוא את המקומות שעוסקים בהם. עובד בתוך המכשיר, בלי אינטרנט") { semanticMenu() }
+        if (semReady) item("🌙 בניית אינדקס המשמעות המלא (מומלץ בלילה)", "כל הספרים נקראים ומובנים פעם אחת. השאירו את המכשיר בטעינה עם התוכנה פתוחה או ברקע – בבוקר אפשר לשאול שאלות בלי אינטרנט" +
+            (if (Progress.running) "\n⟳ " + Progress.text() else "")) {
+            Prefs.put("semantic", true)
+            Sheet.info(this, "בונים את אינדקס המשמעות", "הבנייה רצה ברקע ומציגה כמה זמן נשאר.\n\n• חברו את המכשיר לטעינה.\n• ב-BOOX: הגדרות › אפליקציות › ניהול אפליקציות › חיפוש פלוס – כבו \"הקפאה\" / אפשרו ריצה ברקע, כדי שהמכשיר לא יעצור את העבודה בלילה.\n• אפשר להמשיך לחפש בזמן הבנייה.")
+            Indexer.start(this)
+        }
         toggle("בניית אינדקס משמעות ברקע", "כבוי = החיפוש לפי משמעות מבוטל ולא נבנה אינדקס", "semantic", false) { on ->
             if (on && Semantic.ready(this)) Indexer.start(this)
         }
@@ -162,7 +168,7 @@ class SettingsActivity : BaseActivity() {
         item("בדיקת עדכונים עכשיו", "גרסה נוכחית: " + version()) { Updater.check(this, false) }
 
         section("אודות")
-        item("חיפוש פלוס", "גרסה ${version()}\nפותח על ידי שניאור וילהלם\nמופץ בחינם לתועלת הרבים\n\nקוד פתוח: github.com/sw0555041250-code/-", null)
+        item("חיפוש פלוס", "גרסה ${version()}\nפותח על ידי שניאור וילהלם\nמופץ בחינם לתועלת הרבים\n\nקוד פתוח: github.com/sw0555041250-code/Search-Plus-", null)
     }
 
     private fun version() = try { packageManager.getPackageInfo(packageName, 0).versionName ?: "" } catch (e: Exception) { "" }

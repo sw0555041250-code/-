@@ -204,14 +204,14 @@ object RefParser {
         "ל״ג בעומר", "לג בעומר", "תשעה באב", "ט״ו באב", "חמשה עשר באב", "י״ט כסלו", "יט כסלו", "י״ב תמוז", "יב תמוז",
     )
     private val PARSHA_ALIASES = mapOf("תצווה" to "תצוה", "בחוקתי" to "בחוקותי", "פינחס" to "פנחס", "מטת" to "מטות",
-        "חיי שרא" to "חיי שרה", "ויצה" to "ויצא", "וישלך" to "וישלח", "שלח לך" to "שלח", "קורח" to "קרח")
+        "חיי שרא" to "חיי שרה", "נוח" to "נח", "שמיני עצרת" to "שמיני עצרת", "בחקותי" to "בחוקותי", "ויצה" to "ויצא", "וישלך" to "וישלח", "שלח לך" to "שלח", "קורח" to "קרח")
 
     private val SICHOS_NAMES = listOf("ליקוטי שיחות", "לקוטי שיחות", "ליקוטי שיחת", "לקוטי שיחת", "לקוש", "ליקוש", "לקש")
     private val GEMARA_WORDS = setOf("גמרא", "גמרה", "גמ", "תלמוד", "בבלי", "מסכת", "מסכתא", "מסכתות", "שס", "ש\"ס")
 
     /** Spoken filler words that carry no meaning for finding the place. */
     private val FILLER = setOf(
-        "תפתח", "תפתחי", "פתח", "פתחי", "תביא", "תמצא", "מצא", "חפש", "תחפש", "תחפשי", "לי", "את", "של", "במהדורת",
+        "תפתח", "תפתחי", "תח", "תפתחו", "פתיחת", "ספר", "בספר", "הספר", "פתח", "פתחי", "תביא", "תמצא", "מצא", "חפש", "תחפש", "תחפשי", "לי", "את", "של", "במהדורת",
         "מהדורת", "מהדורה", "בבקשה", "אני", "רוצה", "ללמוד", "לפתוח", "תראה", "הראה", "על", "לפרשת", "בפרשת", "פרשת", "פרשה",
         "פ", "ה", "או", "עם", "ב", "ל", "דף", "עמוד", "עמ", "חלק", "כרך", "פרק", "סימן", "שיחה", "שיחת", "שיחות",
     )
@@ -297,7 +297,11 @@ object RefParser {
             }
             when (t) {
                 "דף", "בדף", "לדף" -> { num()?.let { daf = it } }
-                "חלק", "בחלק", "כרך", "בכרך" -> { num()?.let { volume = it } }
+                "חלק", "בחלק", "כרך", "בכרך" -> {
+                    // "חלק ח' ד'" = חלק ד (the ח stands for חלק)
+                    if (tokens.getOrNull(i + 1) == "ח" && HebNum.read(tokens, i + 2, allowPlainWord = true)?.first?.let { it in 1..39 } == true) { used.add(i); i++ }
+                    num()?.let { volume = it }
+                }
                 "פרק", "בפרק", "לפרק" -> { num()?.let { chapter = it } }
                 "סימן", "בסימן", "סעיף" -> { num()?.let { siman = it } }
                 "שיחה", "בשיחה", "שיחת" -> { num()?.let { sicha = it } }
@@ -324,6 +328,13 @@ object RefParser {
             // "דף כז א" / "דף כז ב"
             for (k in tokens.indices) if (k !in used && (tokens[k] == "א" || tokens[k] == "ב" || tokens[k] == "אלף" || tokens[k] == "בית")) {
                 amud = if (tokens[k].startsWith("א")) 1 else 2; used.add(k); break
+            }
+        }
+        // "חלק ח' ד'" – people sometimes say the letter ח (for חלק) before the number
+        if (volume == null) {
+            for (k in 0 until tokens.size - 1) if (k !in used && tokens[k] == "ח") {
+                val r = HebNum.read(tokens, k + 1) ?: continue
+                if (r.first in 1..39) { volume = r.first; used.add(k); for (x in 0 until r.second) used.add(k + 1 + x); break }
             }
         }
         // ליקוטי שיחות: "חלק ג" may come as "ח"ג" → "חג"
@@ -468,6 +479,46 @@ object PageFinder {
             if (v == n) return true
         }
         return false
+    }
+
+    /**
+     * The printed page number of a page, from its first or last line ("58", "נח", "- 58 -").
+     * Returns all candidate numbers (the caller keeps the ones that agree with neighbouring pages).
+     */
+    fun printedNumbers(pageText: String): List<Int> {
+        val out = ArrayList<Int>()
+        val lines = pageText.trim().split('\n').map { it.trim() }.filter { it.isNotEmpty() }
+        if (lines.isEmpty()) return out
+        for (line in listOf(lines.first(), lines.last()) + (if (lines.size > 1) listOf(lines[1], lines[lines.size - 2]) else emptyList())) {
+            val ws = RefParser.normalize(line).split(' ').filter { it.isNotEmpty() }
+            for (w in listOf(ws.firstOrNull(), ws.lastOrNull())) {
+                if (w == null) continue
+                w.toIntOrNull()?.let { if (it in 1..2000) out.add(it) }
+                if (w.length in 1..4 && line.length < 80) HebNum.gematria(w)?.let { if (it in 1..999) out.add(it) }
+            }
+        }
+        return out.distinct()
+    }
+
+    /** PDF page of a printed page number, from the numbers printed on the pages of the book. */
+    fun pageOfPrinted(pages: Map<Int, String>, printed: Int, pageCount: Int): Pair<Int, Boolean> {
+        val anchors = ArrayList<Pair<Int, Int>>()
+        for ((p, t) in pages) for (n in printedNumbers(t)) {
+            // keep numbers that fit "printed ≈ pdf page - offset" for some plausible offset
+            if (n <= p + 40 && n >= p - 1500) anchors.add(p to n)
+        }
+        // the most common offset (pdf page − printed page) is the book's numbering
+        val offsets = anchors.groupingBy { it.first - it.second }.eachCount()
+        val best = offsets.maxByOrNull { it.value }
+        if (best != null && best.value >= 3) {
+            val exact = anchors.firstOrNull { it.second == printed && it.first - it.second == best.key }
+            if (exact != null) return exact.first to true
+            // offsets can change (plates, two numberings): take the anchors near the wanted page
+            val near = anchors.filter { (pp, n) -> kotlin.math.abs(n - printed) < 60 && offsets[pp - n]!! >= 2 }
+            val local = near.groupingBy { it.first - it.second }.eachCount().maxByOrNull { it.value }?.key ?: best.key
+            return (printed + local).coerceIn(1, pageCount) to true
+        }
+        return printed.coerceIn(1, pageCount) to false
     }
 
     /** How well a book file matches a wanted volume (חלק ג / 3 / ג׳ in the name). */

@@ -8,9 +8,9 @@
 
 ## ⬇️ הורדה
 
-**[להורדת הקובץ SearchPlus.apk מהגרסה האחרונה](https://github.com/sw0555041250-code/-/releases/latest/download/SearchPlus.apk)**
+**[להורדת הקובץ SearchPlus.apk מהגרסה האחרונה](https://github.com/sw0555041250-code/Search-Plus-/releases/latest/download/SearchPlus.apk)**
 
-(כל הגרסאות: [עמוד ה-Releases](https://github.com/sw0555041250-code/-/releases))
+(כל הגרסאות: [עמוד ה-Releases](https://github.com/sw0555041250-code/Search-Plus-/releases))
 
 ## מה התוכנה עושה
 
@@ -32,7 +32,7 @@
 
 ## התקנה
 
-1. במכשיר, פותחים את [קישור ההורדה](https://github.com/sw0555041250-code/-/releases/latest/download/SearchPlus.apk) ומורידים את `SearchPlus.apk`.
+1. במכשיר, פותחים את [קישור ההורדה](https://github.com/sw0555041250-code/Search-Plus-/releases/latest/download/SearchPlus.apk) ומורידים את `SearchPlus.apk`.
 2. פותחים את הקובץ שירד. אם מופיעה הודעה על "מקורות לא ידועים" – מאשרים לדפדפן / למנהל הקבצים להתקין אפליקציות, וחוזרים.
 3. מתקינים ופותחים את **חיפוש פלוס**.
 4. **שלב 1** – לוחצים "מתן הרשאה" ומפעילים "גישה לכל הקבצים" (צריך את זה כדי לקרוא את הספרים, גם בכרטיס הזיכרון).

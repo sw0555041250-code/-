@@ -166,7 +166,8 @@ object VoiceSearch {
 
     fun systemAvailable(c: Context) = try { SpeechRecognizer.isRecognitionAvailable(c) } catch (e: Exception) { false }
 
-    fun engine(c: Context): String = when (Prefs.s("voiceEngine", "auto")) {
+    // default: on the device, no internet needed (the user asked for offline voice search)
+    fun engine(c: Context): String = when (Prefs.s("voiceEngine", "whisper")) {
         "system" -> "system"
         "whisper" -> "whisper"
         else -> if (systemAvailable(c) && !Prefs.b("systemFailed", false)) "system" else "whisper"
@@ -253,7 +254,7 @@ object VoiceSearch {
                     SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> a.toast("לא נקלט דיבור. נסו שוב")
                     else -> {
                         // no internet / service missing: offer the on-device engine
-                        if (Prefs.s("voiceEngine", "auto") == "auto") {
+                        if (Prefs.s("voiceEngine", "whisper") == "auto") {
                             if (err == SpeechRecognizer.ERROR_CLIENT || err == SpeechRecognizer.ERROR_SERVER || err == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) Prefs.put("systemFailed", true)
                             listenWhisper(a, onText)
                         } else Sheet.info(a, "זיהוי הדיבור נכשל", "שירות הזיהוי של המכשיר לא הצליח (קוד $err). ייתכן שאין אינטרנט. אפשר לבחור בהגדרות זיהוי בתוך המכשיר (Whisper), שעובד בלי אינטרנט.")

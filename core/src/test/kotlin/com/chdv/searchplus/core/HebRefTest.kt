@@ -71,6 +71,11 @@ class HebRefTest {
             assertEquals(c, 3, r.volume)
             assertEquals(c, "ויצא", r.parsha)
         }
+        val p58 = RefParser.parse("ליקוטי שיחות חלק ד עמוד 58")!!
+        assertEquals(4, p58.volume); assertEquals(58, p58.page); assertNull(p58.parsha)
+        val noach = RefParser.parse("תח ליקוטי שיחות חלק ח' ד' שיחה לפרשת נוח")!!
+        assertEquals(4, noach.volume); assertEquals("נח", noach.parsha)
+        assertEquals(58, RefParser.parse("לקוטי שיחות חלק ד עמוד נח")!!.page)
         val r = RefParser.parse("ליקוטי שיחות חלק טו שיחה ב לפרשת חיי שרה")!!
         assertEquals(15, r.volume); assertEquals(2, r.sicha); assertEquals("חיי שרה", r.parsha)
     }
@@ -98,6 +103,8 @@ class HebRefTest {
         assertEquals(15, PageFinder.volumeOf("ליקוטי שיחות - חלק טו"))
         assertEquals(3, PageFinder.volumeOf("LS 3"))
         assert(PageFinder.headerHas("לקוטי שיחות ויצא\nא. ...", listOf("ויצא")))
+        val book = (1..300).associateWith { p -> if (p > 6) "${p - 6}\nטקסט של העמוד\nלקוטי שיחות" else "שער" }
+        assertEquals(64, PageFinder.pageOfPrinted(book, 58, 300).first)
         assert(PageFinder.hasNumbered("תניא פרק ה\n...", "פרק", 5))
     }
 }

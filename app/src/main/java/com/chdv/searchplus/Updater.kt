@@ -8,12 +8,12 @@ import android.provider.Settings
 import java.io.File
 
 /**
- * Self update from GitHub Releases (github.com/sw0555041250-code/-). Every push to the
+ * Self update from GitHub Releases (github.com/sw0555041250-code/Search-Plus-). Every push to the
  * repository builds a new signed APK and publishes it as release v1.0.<build>. All builds are
  * signed with the same key, so an update installs over the existing app and keeps the index.
  */
 object Updater {
-    private const val API = "https://api.github.com/repos/sw0555041250-code/-/releases/latest"
+    private const val API = "https://api.github.com/repos/sw0555041250-code/Search-Plus-/releases/latest"
     @Volatile private var busy = false
 
     private fun build(v: String): Int = v.trim().removePrefix("v").substringAfterLast('.').toIntOrNull() ?: 0

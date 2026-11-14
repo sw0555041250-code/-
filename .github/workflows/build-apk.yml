@@ -31,7 +31,7 @@ jobs:
           ls -la app/src/main/assets/tessdata
 
       - name: Version number
-        run: echo "VER=$(( ${{ github.run_number }} + 100 ))" >> $GITHUB_ENV
+        run: echo "VER=$(( ${{ github.run_number }} + 200 ))" >> $GITHUB_ENV
 
       - name: Build release APK
         run: |

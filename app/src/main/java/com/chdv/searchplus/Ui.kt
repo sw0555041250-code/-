@@ -94,9 +94,9 @@ object Col {
     val TEXT = 0xFF111111.toInt()
     val SUB = 0xFF5A5A5A.toInt()
     val LINE = 0xFFD6D6D6.toInt()
-    val CARD = 0xFFF3F4F6.toInt()
-    val ACC = 0xFF1F3A5F.toInt()
-    val ACC_LIGHT = 0xFFE3EAF3.toInt()
+    val CARD = 0xFFF4F5F8.toInt()
+    val ACC = 0xFF1B3B6F.toInt()
+    val ACC_LIGHT = 0xFFE6ECF7.toInt()
     val GOLD = 0xFFFFD65A.toInt()
     val HL = 0x77FFC800
     val RED = 0xFFB00020.toInt()

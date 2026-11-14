@@ -1,7 +1,7 @@
 # חיפוש פלוס (Search Plus): מסמך המשך עבודה למפתח או ל-Claude Code
 
 אפליקציית אנדרואיד לחיפוש מעמיק בתוך ספרי PDF שבמכשיר (כולל כרטיס זיכרון): חיפוש מילים, חיפוש לפי משמעות (AI על המכשיר), קטגוריות לפי תיקיות, קורא מובנה שפותח בעמוד ומסמן את המילים.
-מותאמת ל-**BOOX Go 6** (E-ink, ‏Android 11, ‏2GB RAM). החבילה: `com.chdv.searchplus`. המאגר: `github.com/sw0555041250-code/-` (פומבי). פותח: שניאור וילהלם.
+מותאמת ל-**BOOX Go 6** (E-ink, ‏Android 11, ‏2GB RAM). החבילה: `com.chdv.searchplus`. המאגר: `github.com/sw0555041250-code/Search-Plus-` (פומבי). פותח: שניאור וילהלם.
 
 **כדי להמשיך לעבוד עם Claude Code:** פותחים סשן עם המאגר הזה, ואומרים "קרא את HANDOFF.md והמשך מכאן: <מה רוצים>". כל קוד המקור נמצא גם בקובץ `SearchPlus-full-source.md`.
 
@@ -9,7 +9,7 @@
 - אין צורך ב-Android Studio. כל push ל-`main` מפעיל את `.github/workflows/build-apk.yml`: מוריד את מודל ה-OCR העברי (`heb.traineddata` מ-tessdata_fast) לתוך `app/src/main/assets/tessdata`, בונה APK חתום (release), ומפרסם Release ‏`v1.0.<run_number>` עם `SearchPlus.apk` (סימון latest).
 - **בנייה שנכשלה:** נוצר pre-release בשם `build-log` עם `build-log.txt` (שגיאות קומפילציה).
 - **חתימה:** `app/searchplus.p12`, ‏PKCS12, סיסמה `searchplus123`, ‏alias `searchplus`. אסור להחליף.
-- **גרסה:** `versionName = 1.0.<GITHUB_RUN_NUMBER+100>`, ‏`versionCode = <run+100>` (‏+100 כי המאגר עבר מ-`chdv770-ctrl/Search-Plus`, שהגיע עד 1.0.4 – כך כל גרסה חדשה גבוהה מהישנות ומותקנת מעליהן).
+- **גרסה:** `versionName = 1.0.<GITHUB_RUN_NUMBER+100>`, ‏`versionCode = <run+100>` (‏+200 כי המאגר עבר פעמיים (`chdv770-ctrl/Search-Plus` עד 1.0.4, ואז `sw0555041250-code/-` עד 1.0.1xx) – כך כל גרסה חדשה גבוהה מהישנות ומותקנת מעליהן).
 - **ענפים:** push לכל ענף `claude/**` בונה APK לבדיקה (בלי לפרסם). רק `main` מפרסם Release.
 - **בדיקות:** `.github/workflows/test-core.yml` מוריד את המודלים האמיתיים, מייצר ערכי ייחוס עם ספריות Python הרשמיות (`tools/make_reference.py`, כולל הקלטות קול עבריות של edge-tts) ובודק מולם את מודול `core`.
 - ABI: רק `arm64-v8a` (כדי שה-APK יהיה קטן). למכשיר 32 ביט – להוסיף `armeabi-v7a` ב-`app/build.gradle.kts`.

@@ -295,7 +295,9 @@ class MainActivity : BaseActivity() {
             setPadding(dp(18), dp(16), dp(18), dp(16))
             background = roundBg(Col.ACC, dp(18).toFloat())
         }
-        hero.addView(label("שלום! מה נלמד היום?", 19f, android.graphics.Color.WHITE, true))
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val hello = when (hour) { in 4..11 -> "בוקר טוב!"; in 12..16 -> "צהריים טובים!"; in 17..20 -> "ערב טוב!"; else -> "לילה טוב!" }
+        hero.addView(label("$hello מה נלמד היום?", 21f, android.graphics.Color.WHITE, true))
         val heroStats = label("טוען את נתוני המאגר…", 14f, 0xFFDDE6F2.toInt()).apply { setPadding(0, dp(4), 0, dp(12)) }
         hero.addView(heroStats)
         val quick = hbox()
@@ -310,13 +312,39 @@ class MainActivity : BaseActivity() {
         quick.addView(q("🗂 סידור") { startActivity(Intent(this, OrganizeActivity::class.java)) }, lp(0, WRAP, 1f).m(dp(3), 0, dp(3), 0))
         hero.addView(quick, lp(MATCH, WRAP))
         homeBox.addView(hero, lp(MATCH, WRAP).m(0, dp(6), 0, dp(6)))
+
+        // the big microphone: say what you are looking for
+        val mic = vbox().apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(16), dp(18), dp(16), dp(16))
+            background = pressBg(Col.BG, Col.ACC_LIGHT, 22, dp(2), Col.ACC)
+            setOnClickListener { VoiceSearch.start(this@MainActivity) { t -> onVoice(t) } }
+        }
+        mic.addView(label("🎤", 46f, Col.ACC, true).apply {
+            gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER
+            background = roundBg(Col.ACC_LIGHT, dp(48).toFloat(), dp(3), Col.ACC)
+            setPadding(dp(18), dp(10), dp(18), dp(14))
+        }, lp(dp(96), dp(96)))
+        mic.addView(label("לחצו ודברו", 19f, Col.TEXT, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER; setPadding(0, dp(10), 0, dp(2)) }, lp(MATCH, WRAP))
+        mic.addView(label("אומרים מה מחפשים – והספר נפתח במקום. עובד בלי אינטרנט", 13.5f, Col.SUB).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, lp(MATCH, WRAP))
+        val ex = FlowLayout(this).apply { setPadding(0, dp(12), 0, 0) }
+        listOf("ברכות דף כ״ז ע״א", "לקוטי שיחות חלק ד עמוד 58", "לקוטי שיחות חלק ד נח", "תניא פרק ה", "מה מברכים על פרי העץ").forEach { e ->
+            ex.addView(chip("“$e”", false) {
+                input.setText(e)
+                if (Heb.words(e).firstOrNull() == "מה" && Semantic.ready(this) && !semantic) { semantic = true; buildModes() }
+                doSearch(autoOpen = false)
+            })
+        }
+        mic.addView(ex, lp(MATCH, WRAP))
+        homeBox.addView(mic, lp(MATCH, WRAP).m(0, dp(8), 0, dp(8)))
         exec.execute {
             val st = try { Db.get().stats() } catch (e: Exception) { null }
             ui {
                 heroStats.text = when {
                     st == null || st.books == 0 -> "עוד אין ספרים במאגר – בחרו את תיקיית הספרים כדי להתחיל."
                     else -> "במאגר ${st.books} ספרים · ${st.textPages} עמודים שאפשר לחפש בהם" +
-                        (if (st.pending > 0) "\nעוד ${st.pending} ספרים בתור לסריקה" else "")
+                        (if (st.pending > 0) "\nעוד ${st.pending} ספרים בתור לסריקה" else "") +
+                        (if (Semantic.ready(this)) "\n💡 אינדקס המשמעות: ${st.embedded} מתוך ${st.done} ספרים" + (if (st.embedded >= st.done && st.done > 0) " ✓ מוכן לשאלות" else "") else "")
                 }
             }
         }
