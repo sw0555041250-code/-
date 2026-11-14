@@ -440,8 +440,7 @@ class MainActivity : BaseActivity() {
         if (targets.size == 1) { openTarget(targets[0]); return }
         Sheet.actions(this, "איזה ספר לפתוח? (${targets[0].ref.label()})", targets.map { t ->
             val folder = Library.categoryOf(t.book.dir).joinToString(" › ")
-            "📖 ${t.book.title}
-$folder · ${t.note}" to { openTarget(t) }
+            "📖 ${t.book.title}\n$folder · ${t.note}" to { openTarget(t) }
         })
     }
 
