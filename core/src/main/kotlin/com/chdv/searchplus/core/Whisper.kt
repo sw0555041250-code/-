@@ -308,8 +308,9 @@ class Whisper(
         fun normalize(audio: FloatArray): FloatArray {
             var peak = 0f
             for (x in audio) { val v = kotlin.math.abs(x); if (v > peak) peak = v }
-            if (peak < 0.003f || peak > 0.08f) return audio
-            val g = minOf(0.5f / peak, 40f)
+            // every recording is brought to the same level (tests: clearer numbers like כ״ז at this level)
+            if (peak < 0.003f) return audio
+            val g = minOf(0.6f / peak, 40f)
             return FloatArray(audio.size) { audio[it] * g }
         }
 

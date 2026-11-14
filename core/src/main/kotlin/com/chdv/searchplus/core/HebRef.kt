@@ -244,7 +244,18 @@ object RefParser {
     fun parse(input: String): Ref? {
         val norm = normalize(input)
         if (norm.isEmpty()) return null
-        val tokens = norm.split(' ').toMutableList()
+        val tokens = norm.split(' ').flatMap { t ->
+            // "דפנט" / "דפנת" = "דף נט" written together by the speech recognizer
+            if ((t.startsWith("דף") || t.startsWith("דפ")) && t.length in 4..6 && t !in setOf("דפים", "דפוס", "דפנה")) listOf("דף", t.substring(2)) else listOf(t)
+        }.toMutableList()
+        // after "דף": a ת at the end that makes no daf number is a mis-heard ט (נת → נט)
+        for (k in 1 until tokens.size) {
+            val t = tokens[k]
+            if (tokens[k - 1] == "דף" && t.length in 2..3 && t.endsWith("ת")) {
+                val g = HebNum.gematria(t)
+                if (g == null || g > 180) { val f = t.dropLast(1) + "ט"; if (HebNum.gematria(f) != null) tokens[k] = f }
+            }
+        }
         val text = " $norm "
 
         // ---- which work ----
