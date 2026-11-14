@@ -408,6 +408,7 @@ class MainActivity : BaseActivity() {
                 row.addView(vbox().apply {
                     setPadding(dp(12), dp(12), dp(12), dp(12))
                     background = Col.gradient(c1, c2, dp(16).toFloat())
+                    if (!Col.isEink) elevation = dp(3).toFloat()
                     addView(label(it.icon, 24f, android.graphics.Color.WHITE))
                     addView(label(it.title, 16f, android.graphics.Color.WHITE, true))
                     addView(label(it.sub, 11.5f, 0xEEFFFFFF.toInt()).apply { maxLines = 2 })
@@ -417,6 +418,25 @@ class MainActivity : BaseActivity() {
             grid.addView(row, lp(MATCH, WRAP))
         }
         homeBox.addView(grid, lp(MATCH, WRAP).m(0, dp(2), 0, dp(4)))
+
+        // continue where you stopped
+        Library.recent().firstOrNull()?.let { k ->
+            val p = k.substringBefore('|'); val pg = k.substringAfter('|').toIntOrNull() ?: 1
+            if (File(p).exists()) homeBox.addView(hbox().apply {
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                background = pressBg(Col.CARD, Col.ACC_LIGHT, 16, dp(1.5f), Col.ACC)
+                if (!Col.isEink) elevation = dp(2).toFloat()
+                addView(label("📖", 28f, Col.ACC), lp(WRAP, WRAP))
+                addView(vbox().apply {
+                    setPadding(dp(12), 0, dp(6), 0)
+                    addView(label("להמשיך מאיפה שעצרת", 12.5f, Col.ACC, true))
+                    addView(label(File(p).nameWithoutExtension, 16f, Col.TEXT, true).apply { setSingleLine(); ellipsize = android.text.TextUtils.TruncateAt.END })
+                    addView(label("עמוד $pg", 12.5f, Col.SUB))
+                }, lp(0, WRAP, 1f))
+                addView(label("◂", 22f, Col.ACC, true))
+                setOnClickListener { ReaderActivity.open(this@MainActivity, p, pg) }
+            }, lp(MATCH, WRAP).m(0, dp(6), 0, dp(6)))
+        }
 
         // the big microphone: say what you are looking for
         val mic = vbox().apply {
@@ -486,6 +506,10 @@ class MainActivity : BaseActivity() {
                 "• לחיצה על תוצאה פותחת את הספר בדיוק בעמוד, והמילים מסומנות.\n" +
                 "• 🎤 חיפוש קולי: לוחצים על המיקרופון ואומרים – \"ברכות דף כ״ז עמוד א\", \"ליקוטי שיחות חלק ג ויצא\", או שאלה. התוכנה פותחת ישר את המקום.", 14.5f, Col.SUB).apply { setLineSpacing(0f, 1.15f) })
         homeBox.addView(label("\nפותח על ידי שניאור וילהלם · מופץ לתועלת הרבים", 12.5f, Col.SUB).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER })
+        if (!Col.isEink) for (i in 0 until minOf(homeBox.childCount, 8)) homeBox.getChildAt(i).apply {
+            alpha = 0f; translationY = dp(18).toFloat()
+            animate().alpha(1f).translationY(0f).setStartDelay(i * 60L).setDuration(380).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+        }
     }
 
     private fun section(t: String) = label(t, 16.5f, Col.ACC, true).apply { setPadding(0, dp(12), 0, dp(6)) }
