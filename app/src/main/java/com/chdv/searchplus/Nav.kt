@@ -27,6 +27,7 @@ object Nav {
         Item("📚", "עיון בספרים", "תיקיות וקטגוריות", { a -> a.startActivity(Intent(a, BrowseActivity::class.java)) }),
         Item("🗂", "סידור המאגר", "כפולים · סידור תיקיות · שמות חכמים", { a -> a.startActivity(Intent(a, OrganizeActivity::class.java)) }),
         Item("☁", "ספרים מ-Google Drive", "מביאים את המאגר מהענן ומחפשים בו", { a -> a.startActivity(Intent(a, CloudActivity::class.java)) }),
+        Item("📖", "מילון ראשי תיבות", "אדה״ז, צ״צ, לקו״ש, שליט״א…", { a -> a.startActivity(Intent(a, AbbrActivity::class.java)) }),
         Item("⚙", "הגדרות", "מודלים · פתיחת ספרים · עדכונים", { a -> a.startActivity(Intent(a, SettingsActivity::class.java)) }),
     )
 

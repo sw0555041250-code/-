@@ -85,10 +85,18 @@ class VoiceActivity : BaseActivity() {
         results = vbox()
         box.addView(results, lp(MATCH, WRAP))
 
+        // recent searches – one tap away
+        val hist = Library.history().take(8)
+        if (hist.isNotEmpty()) {
+            box.addView(label("🕘 אחרונים", 13.5f, Col.SUB, true).apply { setPadding(0, dp(16), 0, dp(4)) })
+            val hf = FlowLayout(this)
+            hist.forEach { h -> hf.addView(chip(h, false) { heard.setText(h); handle(h, true) }) }
+            box.addView(hf, lp(MATCH, WRAP))
+        }
         // examples
-        box.addView(label("אפשר לומר למשל", 13.5f, Col.SUB, true).apply { setPadding(0, dp(16), 0, dp(4)) })
+        box.addView(label(if (typing) "אפשר לכתוב למשל" else "אפשר לומר למשל", 13.5f, Col.SUB, true).apply { setPadding(0, dp(16), 0, dp(4)) })
         val ex = FlowLayout(this)
-        listOf("ברכות דף כ״ז עמוד א", "ליקוטי שיחות חלק ד עמוד 58", "ליקוטי שיחות חלק ד שיחה לפרשת נח", "תניא פרק ה", "שולחן ערוך אורח חיים סימן קכח", "מה מברכים על פרי העץ").forEach { e ->
+        listOf("ברכות דף כ״ז עמוד א", "לקו״ש חלק כ״ד עמוד 358", "ליקוטי שיחות חלק ד שיחה לפרשת נח", "שו״ע אדה״ז סימן רע״ח", "תניא פרק ה", "מה מברכים על פרי העץ").forEach { e ->
             ex.addView(chip("“$e”", false) { heard.setText(e); handle(e, false) })
         }
         box.addView(ex, lp(MATCH, WRAP))

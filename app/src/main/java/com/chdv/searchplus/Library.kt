@@ -156,7 +156,8 @@ object Library {
      */
     fun openExternal(a: Activity, path: String, page: Int, terms: List<String> = emptyList(), chooser: Boolean = false, phrase: String? = null) {
         // the app can't be told the page and the words: give it the found page, marked, as a small PDF
-        if ((terms.isNotEmpty() || phrase != null) && Prefs.b("excerpt", true)) {
+        // also for a place without search words (ליקוטי שיחות חלק כד עמוד 358): the app gets that page first
+        if ((terms.isNotEmpty() || phrase != null || page > 1) && Prefs.b("excerpt", true)) {
             a.toast("מכין את העמוד המסומן…")
             Thread {
                 val ex = Excerpt.make(a, path, page, terms, phrase)

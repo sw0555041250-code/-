@@ -15,7 +15,13 @@ object Jump {
         val note: String get() = if (exact) "עמוד $page" else "עמוד $page (משוער – אפשר לתקן בקורא)"
     }
 
-    private fun norm(s: String) = " " + RefParser.normalize(s.replace('_', ' ').replace('-', ' ').replace('.', ' ')) + " "
+    /** Names of files and folders, with their abbreviations written out (a folder "אדה״ז" = אדמו״ר הזקן). */
+    private fun norm(s: String): String {
+        val t = s.replace('_', ' ').replace('-', ' ').replace('.', ' ')
+        val n = RefParser.normalize(t)
+        val e = RefParser.normalize(com.chdv.searchplus.core.Abbr.expand(t))
+        return " " + (if (e != n) "$n $e" else n) + " "
+    }
 
     private fun has(hay: String, phrase: String): Boolean {
         val p = RefParser.normalize(phrase)

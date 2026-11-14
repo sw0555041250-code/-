@@ -394,6 +394,7 @@ class MainActivity : BaseActivity() {
         }
         val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
         val hello = when (hour) { in 4..11 -> "בוקר טוב!"; in 12..16 -> "צהריים טובים!"; in 17..20 -> "ערב טוב!"; else -> "לילה טוב!" }
+        hebrewDate().takeIf { it.isNotEmpty() }?.let { hero.addView(label(it, 13.5f, 0xDDFFFFFF.toInt(), true)) }
         hero.addView(label("$hello מה נלמד היום?", 21f, android.graphics.Color.WHITE, true))
         val heroStats = label("טוען את נתוני המאגר…", 14f, 0xFFDDE6F2.toInt()).apply { setPadding(0, dp(4), 0, dp(12)) }
         hero.addView(heroStats)

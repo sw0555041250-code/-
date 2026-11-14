@@ -99,7 +99,9 @@ object Excerpt {
             }
             if (best >= 0 && bestScore >= minOf(3, n)) return words.subList(best, minOf(words.size, best + n)).map { it.second }
         }
-        val want = terms.map { it.removeSuffix("*") }.filter { it.length > 1 }
-        return words.filter { (w, _) -> want.any { w.contains(it) } }.map { it.second }
+        // final letters compared as regular ones (מלך / מלכים), so every form of the word is marked
+        fun fin(x: String) = x.replace('ך', 'כ').replace('ם', 'מ').replace('ן', 'נ').replace('ף', 'פ').replace('ץ', 'צ')
+        val want = terms.map { fin(it.removeSuffix("*")) }.filter { it.length > 1 }
+        return words.filter { (w, _) -> val fw = fin(w); want.any { fw.contains(it) } }.map { it.second }
     }
 }

@@ -244,7 +244,8 @@ object RefParser {
     }
 
     fun parse(input: String): Ref? {
-        val norm = normalize(input)
+        // abbreviations written out first: "שו״ע אדה״ז" → "שולחן ערוך אדמו״ר הזקן"
+        val norm = normalize(Abbr.expand(input))
         if (norm.isEmpty()) return null
         val tokens = norm.split(' ').flatMap { t ->
             // "דפנט" / "דפנת" = "דף נט" written together by the speech recognizer

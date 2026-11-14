@@ -98,6 +98,10 @@ class HebRefTest {
         assertEquals("שולחן ערוך הרב", RefParser.parse("שו\"ע אדה\"ז סימן ב")!!.work)
         val ls24 = RefParser.parse("שיחה לפרשת ויצא ליקוטי שיחות חלק כ\"ד עמוד 358")!!
         assertEquals(24, ls24.volume); assertEquals(358, ls24.page)
+        assertEquals("שולחן ערוך הרב", RefParser.parse("שוע אדהז סימן א")!!.work)
+        assertEquals("אדמו״ר הצמח צדק", Abbr.of("אדמ\"צ"))
+        assertEquals("שיחיה לאורך ימים טובים אמן", Abbr.of("שליט\"א"))
+        assertEquals(27, RefParser.parse("ברכות כ\"ז ע\"א")!!.daf)
         assertNull(RefParser.parse("מה הדין של מי ששכח לברך"))
         assertNull(RefParser.parse("רבי שמעון בר יוחאי"))
     }

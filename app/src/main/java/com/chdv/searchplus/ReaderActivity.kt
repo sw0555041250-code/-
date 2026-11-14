@@ -279,9 +279,11 @@ class ReaderActivity : BaseActivity() {
             }
             if (best >= 0 && bestScore >= minOf(3, n)) return words.subList(best, minOf(words.size, best + n)).map { it.second }
         }
-        val want = terms.map { it.removeSuffix("*") }.filter { it.isNotEmpty() }
+        // final letters compared as regular ones (מלך / מלכים), so every form of the word is marked
+        fun fin(x: String) = x.replace('ך', 'כ').replace('ם', 'מ').replace('ן', 'נ').replace('ף', 'פ').replace('ץ', 'צ')
+        val want = terms.map { fin(it.removeSuffix("*")) }.filter { it.isNotEmpty() }
         val minLen = if (want.size == 1) 1 else 2
-        return words.filter { (w, _) -> want.any { it.length >= minLen && w.contains(it) } }.map { it.second }
+        return words.filter { (w, _) -> val fw = fin(w); want.any { it.length >= minLen && fw.contains(it) } }.map { it.second }
     }
 
     private fun next() { if (page < pageCount) { page++; show() } }
@@ -335,6 +337,18 @@ class ReaderActivity : BaseActivity() {
                 val on = Library.toggleFavorite(key); toast(if (on) "נוסף למועדפים" else "הוסר מהמועדפים")
             })
             items.add("📄 תצוגת טקסט – שורות מסודרות" to { textView() })
+            items.add("📖 ראשי תיבות בעמוד הזה" to {
+                val t = Db.get().bookByPath(p)?.let { Db.get().pageText(it.id, page) }
+                val ab = if (t.isNullOrBlank()) emptyList() else AbbrActivity.onPage(t)
+                if (ab.isEmpty()) toast("לא נמצאו ראשי תיבות מוכרים בעמוד הזה")
+                else {
+                    val box = vbox().apply { setPadding(dp(16), dp(14), dp(16), dp(14)) }
+                    box.addView(label("ראשי תיבות בעמוד $page", 18f, Col.TEXT, true))
+                    val l = vbox(); ab.forEach { (k, v) -> l.addView(AbbrActivity.row(this, k, v)) }
+                    box.addView(android.widget.ScrollView(this).apply { addView(l) }, lp(MATCH, dp(420)).m(0, dp(8), 0, 0))
+                    Sheet.make(this, box).show()
+                }
+            })
             items.add("העתקת הטקסט של העמוד" to { copyPage() })
             items.add("שיתוף הקובץ" to {
                 val i = Intent(Intent.ACTION_SEND).setType("application/pdf")
@@ -445,6 +459,16 @@ class PageView(c: Context) : View(c) {
     private val mark = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = if (Col.isEink) 0xFF000000.toInt() else 0xFFE65100.toInt(); style = Paint.Style.FILL }
     /** 0..1 – the "look here" pulse after the words were found */
     private var pulse = 0f
+    /** Strong marking, until the first touch. */
+    private var emph = false
+
+    /** The user touched the page: the marking stays, quieter. */
+    fun calm() {
+        if (!emph) return
+        emph = false
+        pulseAnim?.cancel(); pulse = 0f
+        invalidate()
+    }
     private var pulseAnim: android.animation.ValueAnimator? = null
 
     /** Words next to each other on the same line become one box, so a whole phrase is framed together. */
@@ -481,11 +505,12 @@ class PageView(c: Context) : View(c) {
             ty = height / 3f - f.centerY() * s
             clamp()
         }
-        // pulse a few times: "it is here"
+        // "it is here": strong until the user touches the page; on colour screens it keeps breathing
+        emph = rects.isNotEmpty()
         pulseAnim?.cancel()
         pulseAnim = android.animation.ValueAnimator.ofFloat(0f, 1f, 0f).apply {
-            duration = if (Col.isEink) 900 else 650
-            repeatCount = 2
+            duration = if (Col.isEink) 900 else 1100
+            repeatCount = if (Col.isEink) 2 else android.animation.ValueAnimator.INFINITE
             addUpdateListener { pulse = it.animatedValue as Float; invalidate() }
             addListener(object : android.animation.AnimatorListenerAdapter() { override fun onAnimationEnd(a: android.animation.Animator) { pulse = 0f; invalidate() } })
             start()
@@ -518,7 +543,8 @@ class PageView(c: Context) : View(c) {
         canvas.scale(s, s)
         canvas.drawBitmap(b, 0f, 0f, paint)
         val d = context.resources.displayMetrics.density
-        hlLine.strokeWidth = (2.5f + 3f * pulse) * d / s
+        hlLine.strokeWidth = ((if (emph) 4f else 2f) + 3f * pulse) * d / s
+        hl.color = if (Col.isEink) (if (emph) 0x55000000 else 0x30000000) else (if (emph) 0x88FFB300.toInt() else 0x50FFB300)
         val grow = 6f * pulse * d / s
         val rad = 5f * d / s
         for (r in rects) {
@@ -536,6 +562,7 @@ class PageView(c: Context) : View(c) {
 
     private val scaleDet = ScaleGestureDetector(c, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScale(d: ScaleGestureDetector): Boolean {
+            calm()
             val nz = (zoom * d.scaleFactor).coerceIn(1f, 5f)
             val f = nz / zoom
             tx = d.focusX - (d.focusX - tx) * f
@@ -548,6 +575,7 @@ class PageView(c: Context) : View(c) {
 
     private val gest = GestureDetector(c, object : GestureDetector.SimpleOnGestureListener() {
         override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+            calm()
             if (!zoomed()) onTap?.invoke(e.x / width.coerceAtLeast(1))
             else onTap?.invoke(0.5f)
             return true
@@ -561,6 +589,7 @@ class PageView(c: Context) : View(c) {
             return true
         }
         override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
+            calm()
             if (!zoomed()) return false
             tx -= dx; ty -= dy; invalidate(); return true
         }

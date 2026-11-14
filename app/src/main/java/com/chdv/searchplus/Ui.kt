@@ -360,3 +360,17 @@ fun human(size: Long): String = when {
     size >= 1L shl 10 -> String.format("%d KB", size shr 10)
     else -> "$size B"
 }
+
+
+/** Today's Hebrew date, e.g. "יום ג׳ · י״ג כסלו תשפ״ז" (after nightfall it is already the next day only in the calendar, not here). */
+fun hebrewDate(): String = try {
+    val cal = android.icu.util.HebrewCalendar()
+    val day = cal.get(android.icu.util.Calendar.DAY_OF_MONTH)
+    val m = cal.get(android.icu.util.Calendar.MONTH)
+    val y = cal.get(android.icu.util.Calendar.YEAR)
+    val leap = ((7 * y + 1) % 19) < 7
+    val months = arrayOf("תשרי", "חשון", "כסלו", "טבת", "שבט", "אדר א׳", if (leap) "אדר ב׳" else "אדר", "ניסן", "אייר", "סיון", "תמוז", "אב", "אלול")
+    fun g(n: Int): String { val h = com.chdv.searchplus.core.HebNum.toHeb(n); return if (h.length == 1) h + "׳" else h.dropLast(1) + "״" + h.last() }
+    val dow = arrayOf("ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת קודש")[java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK) - 1]
+    (if (dow.startsWith("שבת")) dow else "יום $dow") + " · " + g(day) + " " + months[m] + " " + g(y % 1000)
+} catch (e: Throwable) { "" }
