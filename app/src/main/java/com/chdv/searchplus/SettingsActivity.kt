@@ -145,6 +145,7 @@ class SettingsActivity : BaseActivity() {
             apps.forEach { r -> opts.add("app:${r.activityInfo.packageName}/${r.activityInfo.name}" to r.loadLabel(packageManager).toString()) }
             val cur = if (ow == "internal") "internal" else "app:$rp/${Prefs.s("readerCls", "")}"
             Sheet.choice(this, "ברירת מחדל לפתיחת ספרים", opts, cur) { k ->
+                Prefs.put("readerChosen", true)
                 if (k == "internal") Prefs.put("openWith", "internal") else {
                     val (pkg, cls) = k.removePrefix("app:").split('/', limit = 2)
                     Prefs.put("openWith", "external"); Prefs.put("readerPkg", pkg); Prefs.put("readerCls", cls)

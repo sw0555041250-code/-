@@ -38,6 +38,10 @@ class ReaderActivity : BaseActivity() {
     companion object {
         fun open(c: Context, path: String, page: Int, terms: List<String> = emptyList(), hits: IntArray? = null,
                  refLabel: String? = null, amudIndex: Int = -1, exact: Boolean = true) {
+            if (c is android.app.Activity && !Prefs.b("readerChosen", false)) {
+                Library.chooseDefault(c) { open(c, path, page, terms, hits, refLabel, amudIndex, exact) }
+                return
+            }
             if (Prefs.s("openWith", "internal") == "external" && c is android.app.Activity) {
                 Library.addRecent(path, page)
                 Library.openExternal(c, path, page, terms, chooser = false)

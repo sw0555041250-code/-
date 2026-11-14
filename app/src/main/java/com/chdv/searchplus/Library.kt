@@ -96,15 +96,58 @@ object Library {
     fun uriFor(c: Context, f: File): Uri = FileProvider.getUriForFile(c, c.packageName + ".files", f)
 
     /** Apps on the device that can open a PDF. */
+    /**
+     * Every app on the device that can open a PDF in any way: readers (ReadEra, NeoReader…), note apps,
+     * file managers. Apps register differently (PDF type, any document, any file, by file name), so all
+     * the ways are asked and merged.
+     */
     fun pdfApps(c: Context): List<android.content.pm.ResolveInfo> {
-        val i = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse("content://x/y.pdf"), "application/pdf")
-        return c.packageManager.queryIntentActivities(i, 0).filter { it.activityInfo.packageName != c.packageName }
-            .sortedBy { it.loadLabel(c.packageManager).toString() }
+        val pm = c.packageManager
+        val asks = ArrayList<Intent>()
+        for (scheme in listOf("content://x/y.pdf", "file:///sdcard/y.pdf")) {
+            for (type in listOf("application/pdf", "application/*", "*/*", null)) {
+                val u = Uri.parse(scheme)
+                asks.add(Intent(Intent.ACTION_VIEW).apply { if (type == null) data = u else setDataAndType(u, type) })
+            }
+        }
+        val seen = LinkedHashMap<String, android.content.pm.ResolveInfo>()
+        for (i in asks) {
+            val found = try { pm.queryIntentActivities(i, android.content.pm.PackageManager.MATCH_ALL) } catch (e: Exception) { emptyList() }
+            for (r in found) {
+                val a = r.activityInfo ?: continue
+                if (a.packageName == c.packageName) continue
+                val key = a.packageName + "/" + a.name
+                if (key !in seen) seen[key] = r
+            }
+        }
+        // one entry per app (the first, most specific activity found)
+        return seen.values.distinctBy { it.activityInfo.packageName }.sortedBy { it.loadLabel(pm).toString() }
     }
 
     fun appName(c: Context, pkg: String): String = try {
         c.packageManager.getApplicationLabel(c.packageManager.getApplicationInfo(pkg, 0)).toString()
     } catch (e: Exception) { pkg }
+
+    /**
+     * The first time a book is opened: show every app that can open it (and the built-in reader),
+     * and remember the choice as the default. Can be changed later in the settings.
+     */
+    fun chooseDefault(a: Activity, then: () -> Unit) {
+        val pm = a.packageManager
+        val items = ArrayList<Pair<String, () -> Unit>>()
+        items.add("📖 הקורא של חיפוש פלוס – עמוד מדויק + סימון המילים" to {
+            Prefs.put("openWith", "internal"); Prefs.put("readerChosen", true); then()
+        })
+        for (r in pdfApps(a)) {
+            items.add(r.loadLabel(pm).toString() to {
+                Prefs.put("openWith", "external"); Prefs.put("readerPkg", r.activityInfo.packageName); Prefs.put("readerCls", r.activityInfo.name)
+                Prefs.put("readerChosen", true)
+                a.toast("מעכשיו ספרים ייפתחו ב-${r.loadLabel(pm)}. אפשר לשנות בהגדרות")
+                then()
+            })
+        }
+        Sheet.actions(a, "באיזו אפליקציה לפתוח ספרים? (הבחירה תישמר)", items)
+    }
 
     /**
      * Open a PDF in another app. With a default reader chosen in the settings it opens there directly
@@ -135,9 +178,9 @@ object Library {
             Prefs.put("readerPkg", ""); Prefs.put("readerCls", "")
         }
         val apps = pdfApps(a)
-        if (apps.isEmpty()) { a.toast("לא נמצאה אפליקציה לפתיחת PDF"); return }
+        if (apps.isEmpty()) { if (!a.safeStart(Intent.createChooser(i, "פתיחה באמצעות"))) a.toast("לא נמצאה אפליקציה לפתיחת PDF"); return }
         val pm = a.packageManager
-        Sheet.actions(a, "פתיחה באמצעות", apps.map { r ->
+        Sheet.actions(a, if (chooser) "פתיחה באמצעות" else "באיזו אפליקציה לפתוח? (הבחירה תישמר – אפשר לשנות בהגדרות)", apps.map { r ->
             r.loadLabel(pm).toString() to {
                 if (!chooser) {
                     Prefs.put("readerPkg", r.activityInfo.packageName); Prefs.put("readerCls", r.activityInfo.name)
@@ -146,7 +189,9 @@ object Library {
                 a.grantUriPermission(r.activityInfo.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 if (!a.safeStart(Intent(i).setClassName(r.activityInfo.packageName, r.activityInfo.name))) a.toast("לא ניתן לפתוח")
             }
-        })
+        } + listOf("עוד אפליקציות… (הרשימה של המכשיר)" to {
+            if (!a.safeStart(Intent.createChooser(i, "פתיחה באמצעות"))) a.toast("לא נמצאה אפליקציה")
+        }))
     }
 
     // ---------- favourites, history, recent books ----------
