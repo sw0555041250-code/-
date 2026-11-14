@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "SearchPlus"
 include(":app")
+include(":core")
