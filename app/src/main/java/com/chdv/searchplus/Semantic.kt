@@ -316,4 +316,32 @@ object Semantic {
     }
 
     fun vectorCount(c: Context): Long = vectorsFile(c).length() / REC
+
+    class Answer(val text: String, val pageId: Long, val score: Float)
+
+    /** Extractive answer: the single sentence (from the closest pages) whose meaning is closest to the question. */
+    fun answer(c: Context, question: String, pageIds: List<Long>): Answer? {
+        if (pageIds.isEmpty()) return null
+        val q = embed(c, "query: $question", 96)
+        var best: Answer? = null
+        val db = Db.get()
+        for (pid in pageIds) {
+            val body = db.pageTextById(pid) ?: continue
+            // sentences, or ~30-word pieces where the text has no punctuation
+            val sents = ArrayList<String>()
+            for (part in body.replace('\n', ' ').split(Regex("(?<=[.:;?!])\\s+"))) {
+                val ws = part.split(' ').filter { it.isNotBlank() }
+                if (ws.size < 5) continue
+                var i = 0
+                while (i < ws.size) { sents.add(ws.subList(i, minOf(ws.size, i + 35)).joinToString(" ")); i += 30 }
+            }
+            for (sn in sents.take(40)) {
+                val v = embed(c, "passage: $sn", 80)
+                var dot = 0f
+                for (d in 0 until DIM) dot += q[d] * v[d]
+                if (best == null || dot > best.score) best = Answer(sn, pid, dot)
+            }
+        }
+        return best?.takeIf { it.score > 0.78f }
+    }
 }

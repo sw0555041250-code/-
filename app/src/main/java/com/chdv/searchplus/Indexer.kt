@@ -303,11 +303,11 @@ class IndexService : Service() {
 
     private fun note(text: String): Notification {
         val nm = getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel("idx") == null) {
+        if (nm.getNotificationChannel("idx") == null) {
             nm.createNotificationChannel(NotificationChannel("idx", "סריקת ספרים", NotificationManager.IMPORTANCE_LOW))
         }
         val pi = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
-        val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, "idx") else @Suppress("DEPRECATION") Notification.Builder(this)
+        val b = Notification.Builder(this, "idx")
         return b.setSmallIcon(android.R.drawable.ic_menu_search)
             .setContentTitle("חיפוש פלוס – סורק ספרים")
             .setContentText(text)

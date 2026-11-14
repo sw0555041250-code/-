@@ -1,0 +1,39 @@
+# חיפוש פלוס (Search Plus): מסמך המשך עבודה למפתח או ל-Claude Code
+
+אפליקציית אנדרואיד לחיפוש מעמיק בתוך ספרי PDF שבמכשיר (כולל כרטיס זיכרון): חיפוש מילים, חיפוש לפי משמעות (AI על המכשיר), קטגוריות לפי תיקיות, קורא מובנה שפותח בעמוד ומסמן את המילים.
+מותאמת ל-**BOOX Go 6** (E-ink, ‏Android 11, ‏2GB RAM). החבילה: `com.chdv.searchplus`. המאגר: `github.com/chdv770-ctrl/Search-Plus` (פומבי). פותח: שניאור וילהלם.
+
+**כדי להמשיך לעבוד עם Claude Code:** פותחים סשן עם המאגר הזה, ואומרים "קרא את HANDOFF.md והמשך מכאן: <מה רוצים>". כל קוד המקור נמצא גם בקובץ `SearchPlus-full-source.md`.
+
+## בנייה ופרסום
+- אין צורך ב-Android Studio. כל push ל-`main` מפעיל את `.github/workflows/build-apk.yml`: מוריד את מודל ה-OCR העברי (`heb.traineddata` מ-tessdata_fast) לתוך `app/src/main/assets/tessdata`, בונה APK חתום (release), ומפרסם Release ‏`v1.0.<run_number>` עם `SearchPlus.apk` (סימון latest).
+- **בנייה שנכשלה:** נוצר pre-release בשם `build-log` עם `build-log.txt` (שגיאות קומפילציה).
+- **חתימה:** `app/searchplus.p12`, ‏PKCS12, סיסמה `searchplus123`, ‏alias `searchplus`. אסור להחליף.
+- **גרסה:** `versionName = 1.0.<GITHUB_RUN_NUMBER>`, ‏`versionCode = <run>`.
+- ABI: רק `arm64-v8a` (כדי שה-APK יהיה קטן). למכשיר 32 ביט – להוסיף `armeabi-v7a` ב-`app/build.gradle.kts`.
+- ספריות: androidx core/appcompat/recyclerview, ‏`com.tom-roush:pdfbox-android` (חילוץ טקסט ומיקום אותיות), ‏`com.microsoft.onnxruntime:onnxruntime-android` (מודל המשמעות), ‏`cz.adaptech.tesseract4android` (OCR, מ-JitPack).
+
+## מבנה הקוד (Kotlin, ממשק בקוד בלי XML layouts)
+| קובץ | תפקיד |
+|---|---|
+| `Ui.kt` | `App` (Application), ‏`Prefs`, צבעים `Col`, עזרים (`label`, `pill`, `chip`, `vbox`/`hbox`, `FlowLayout`), ‏`BaseActivity` (כותרת + חזרה, RTL), ‏`Sheet` (חלונות: info/confirm/choice/actions/input) |
+| `Text.kt` | `Heb`: תיקון טקסט עברי – `repairPage` בוחר בין רגיל / Windows‑1255 / DOS‑862 ובין סדר רגיל להפוך (ניקוד לפי מילים נפוצות ומיקום אותיות סופיות); `clean` – הסרת ניקוד וטעמים, המרת פיסוק עברי ל-ASCII; `PREFIXES` (אותיות שימוש) |
+| `Db.kt` | SQLite: ‏`files` (ספר), ‏`pages` (עמוד: kind 0=טקסט, 1=OCR, 2=בלי טקסט – ממתין ל-OCR, 3=OCR לא מצא כלום), ‏`fts` (FTS4, ‏docid = pages.id) |
+| `Library.kt` | תיקיות הספרים (`roots`), קטגוריה = נתיב התיקייה ביחס לתיקיית הספרים (`categoryOf`), הרשאת "כל הקבצים", סריקת קבצים, פתיחה חיצונית, מועדפים/היסטוריה/אחרונים |
+| `Indexer.kt` | `Progress` (מצב חי), ‏`Indexer` (סריקה → חילוץ טקסט במעבר אחד על כל ספר → OCR → משמעות), ‏`Ocr` (Tesseract עברי על עמודים בלי טקסט, רינדור ב-PdfRenderer), ‏`Net` (הורדות), ‏`IndexService` (שירות חזית עם התראה ו-WakeLock) |
+| `Search.kt` | בניית שאילתת FTS4 (ביטוי מדויק / כל המילים / NEAR / OR, עם אותיות שימוש וכוכבית), קיבוץ לפי ספר, התאמת שם ספר, קטעי טקסט (snippet) |
+| `Semantic.kt` | multilingual-e5-small (ONNX מ-HuggingFace, ‏Xenova), טוקנייזר SentencePiece Unigram (Viterbi) שנבנה מ-tokenizer.json, הטמעה (mean pooling + נרמול), קטעים של ~90 מילים, וקטורים int8 בקובץ `vectors.bin` (רשומה: pageId,scale,384 בתים), חיפוש brute-force עם top‑K |
+| `MainActivity.kt` | מסך החיפוש: מצב מילים/משמעות, אפשרויות, פירורי לחם וצ'יפים של קטגוריות (drill‑down), מיון, רשימת ספרים מתרחבת לעמודים עם קטעים מודגשים, מסך בית (היסטוריה, מועדפים, אחרונים, הסבר) |
+| `ReaderActivity.kt` | קורא PDF: ‏PdfRenderer לתמונה, ‏PDFBox למיקומי מילים → מלבני הדגשה, ‏`PageView` (זום, גרירה, הקשה בצדדים/החלקה לדפדוף), תוצאה הבאה/קודמת, חיפוש בספר, מועדפים, העתקת טקסט |
+| `BrowseActivity.kt` | עיון בתיקיות וספרים + `FolderPicker` (זיכרון פנימי וכרטיס זיכרון) |
+| `SettingsActivity.kt` | כל ההגדרות: תיקיות, סריקה, OCR, משמעות, פתיחה, גודל כתב, עדכונים, אודות |
+| `Updater.kt` | עדכון עצמי מ-`releases/latest` של המאגר |
+
+## מפתחות Prefs
+`roots`, `semanticRoots`, `match` (PHRASE/ALL/NEAR/ANY), `prefixes`, `sort`, `lastSemantic`, `semantic`, `ocrAuto`, `autoScan`, `sortByPosition`, `openWith` (internal/external), `fontSize`, `autoUpdate`, `lastUpdateCheck`, `favs` (`path|page`), `history`, `recent` (`path|page`).
+
+## רעיונות להמשך
+- הדגשה גם בעמודי OCR (מיקומי מילים מ-Tesseract ResultIterator).
+- תמיכה ב-EPUB/TXT/DOCX.
+- חיפוש היברידי (שילוב ציון מילים וציון משמעות).
+- ייצוא/גיבוי של האינדקס לכרטיס הזיכרון.

@@ -69,7 +69,7 @@ object Library {
         }
     }
 
-    private val SKIP = setOf("Android", "LOST.DIR", ".thumbnails", "\$RECYCLE.BIN", "System Volume Information")
+    private val SKIP = setOf("Android", "LOST.DIR", ".thumbnails", "\$RECYCLE.BIN", "System Volume Information", "_כפולים")
 
     /** Every PDF under the library folders. */
     fun walk(onFile: (File) -> Unit, cancelled: () -> Boolean) {

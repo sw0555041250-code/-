@@ -100,7 +100,8 @@ class MainActivity : BaseActivity() {
             setPadding(dp(10), 0, dp(10), 0)
         }, lp(0, WRAP, 1f))
         head.addView(headerButton("📚 ספרים") { startActivity(Intent(this, BrowseActivity::class.java)) })
-        head.addView(headerButton("⚙ הגדרות") { startActivity(Intent(this, SettingsActivity::class.java)) })
+        head.addView(headerButton("🗂 סידור") { startActivity(Intent(this, OrganizeActivity::class.java)) })
+        head.addView(headerButton("⚙") { startActivity(Intent(this, SettingsActivity::class.java)) })
         root.addView(head, lp(MATCH, WRAP))
 
         status = label("", 13f, Col.ACC).apply {
@@ -382,6 +383,7 @@ class MainActivity : BaseActivity() {
             cats.addView(chip("📁 $name  (${if (c[1] > 0) c[1] else c[0]})", false) { prefix = prefix + name; expanded.clear(); render() })
         }
 
+        if (r.semantic && r.books.isNotEmpty()) findAnswer(r)
         val pages = vis.sumOf { it.pages.size }
         summary.text = when {
             vis.isEmpty() && r.semantic -> "לא נמצאו קטעים. ייתכן שאינדקס המשמעות עדיין נבנה – אפשר לראות את ההתקדמות בהגדרות."
@@ -401,6 +403,7 @@ class MainActivity : BaseActivity() {
         }
         if (sorted.size == 1) expanded.add(sorted[0].book.id)
         val rows = ArrayList<Row>()
+        if (r.semantic && vis.isNotEmpty() && prefix.isEmpty()) rows.add(Row.Answer(answer))
         for (h in sorted) {
             rows.add(Row.BookRow(h))
             if (h.book.id in expanded) {
@@ -414,6 +417,19 @@ class MainActivity : BaseActivity() {
     }
 
     private val showAll = HashSet<Long>()
+    private var answer: Semantic.Answer? = null
+    private var answerFor: Results? = null
+
+    /** For a question: read the closest passages sentence by sentence and pick the sentence that answers it. */
+    private fun findAnswer(r: Results) {
+        if (answerFor === r) return
+        answerFor = r; answer = null
+        val top = r.books.flatMap { b -> b.pages.map { b to it } }.sortedByDescending { it.second.score }.take(4)
+        exec.execute {
+            val a = try { Semantic.answer(this, r.query, top.map { it.second.pageId }) } catch (e: Throwable) { null }
+            ui { if (results === r) { answer = a ?: Semantic.Answer("", -1, 0f); render() } }
+        }
+    }
 
     private fun crumb(t: String, cur: Boolean, onClick: () -> Unit) = label(t, 15f, if (cur) Col.TEXT else Col.ACC, true).apply {
         setPadding(dp(6), dp(4), dp(6), dp(4))
@@ -445,6 +461,7 @@ class MainActivity : BaseActivity() {
         class BookRow(val hit: BookHit) : Row()
         class PageRow(val hit: BookHit, val page: PageHit) : Row()
         class More(val hit: BookHit, val rest: Int) : Row()
+        class Answer(val a: Semantic.Answer?) : Row()
     }
 
     private val snippetCache = HashMap<Long, CharSequence>()
@@ -471,7 +488,7 @@ class MainActivity : BaseActivity() {
         private var rows: List<Row> = emptyList()
         fun set(r: List<Row>) { rows = r; notifyDataSetChanged() }
         override fun getItemCount() = rows.size
-        override fun getItemViewType(position: Int) = when (rows[position]) { is Row.BookRow -> 0; is Row.PageRow -> 1; is Row.More -> 2 }
+        override fun getItemViewType(position: Int) = when (rows[position]) { is Row.BookRow -> 0; is Row.PageRow -> 1; is Row.More -> 2; is Row.Answer -> 3 }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
             val c = this@MainActivity
@@ -492,6 +509,13 @@ class MainActivity : BaseActivity() {
                     background = pressBg(Col.CARD, Col.ACC_LIGHT, 0)
                     addView(c.label("", 13.5f, Col.ACC, true).apply { id = 1 })
                     addView(c.label("", 15f, Col.TEXT).apply { id = 2; setLineSpacing(0f, 1.12f) })
+                }
+                3 -> c.vbox().apply {
+                    setPadding(dp(16), dp(14), dp(16), dp(14))
+                    background = roundBg(0xFFFFF7DD.toInt(), dp(14).toFloat(), dp(1.5f), 0xFFD8B040.toInt())
+                    addView(c.label("💡 התשובה מתוך הספרים שלך", 14f, Col.ACC, true).apply { id = 1 })
+                    addView(c.label("", 16.5f, Col.TEXT).apply { id = 2; setPadding(0, dp(6), 0, dp(6)); setLineSpacing(0f, 1.15f) })
+                    addView(c.label("", 13.5f, Col.ACC, true).apply { id = 3 })
                 }
                 else -> c.label("", 14.5f, Col.ACC, true).apply {
                     gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER
@@ -551,6 +575,21 @@ class MainActivity : BaseActivity() {
                         val on = Library.toggleFavorite(key)
                         toast(if (on) "העמוד נוסף למועדפים ★" else "הוסר מהמועדפים")
                         true
+                    }
+                }
+                is Row.Answer -> {
+                    val a = row.a
+                    val wrap = holder.itemView.layoutParams as RecyclerView.LayoutParams
+                    wrap.setMargins(dp(10), dp(8), dp(10), dp(8))
+                    val src = a?.let { x -> Db.get().pageRef(x.pageId) }?.let { ref -> Db.get().book(ref.first)?.let { it to ref.second } }
+                    v.findViewById<TextView>(2).text = when {
+                        a == null -> "קורא את הקטעים הקרובים ומחפש את המשפט שעונה על השאלה…"
+                        a.pageId < 0 || src == null -> "לא נמצא משפט שעונה במדויק. הקטעים הקרובים ביותר מופיעים למטה."
+                        else -> "‟" + a.text + "”"
+                    }
+                    v.findViewById<TextView>(3).text = if (src != null && a != null && a.pageId >= 0) "📖 ${src.first.title}, עמוד ${src.second}  ·  לפתיחה ◂" else ""
+                    v.setOnClickListener {
+                        if (src != null) ReaderActivity.open(this@MainActivity, src.first.path, src.second, Heb.words(a!!.text).filter { it.length > 2 }.take(6))
                     }
                 }
                 is Row.More -> {
