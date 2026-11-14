@@ -20,12 +20,17 @@ class SettingsActivity : BaseActivity() {
 
     override fun onResume() { super.onResume(); render() }
 
-    private fun section(t: String) = box.addView(label(t, 15f, Col.ACC, true).apply { setPadding(dp(4), dp(18), dp(4), dp(6)) })
+    private fun section(t: String) = box.addView(hbox().apply {
+        setPadding(dp(2), dp(20), dp(2), dp(8))
+        addView(View(this@SettingsActivity).apply { background = Col.gradient(Col.ACC, Col.ACC2, dp(3).toFloat()) }, lp(dp(5), dp(20)))
+        addView(label(t, 16.5f, Col.ACC, true).apply { setPadding(dp(10), 0, 0, 0) })
+    })
 
     private fun item(title: String, sub: String = "", onClick: (() -> Unit)?): TextView {
         val v = vbox().apply {
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            background = pressBg(Col.CARD, Col.ACC_LIGHT, 12)
+            setPadding(dp(16), dp(13), dp(16), dp(13))
+            background = pressBg(Col.CARD, Col.ACC_LIGHT, 14, dp(1), Col.LINE)
+            if (!Col.isEink) elevation = dp(1).toFloat()
         }
         v.addView(label(title, 16f, Col.TEXT, true))
         val s = label(sub, 13.5f, Col.SUB)
@@ -196,6 +201,9 @@ class SettingsActivity : BaseActivity() {
 
         section("אודות")
         item("חיפוש פלוס", "גרסה ${version()}\nפותח על ידי שניאור וילהלם\nמופץ בחינם לתועלת הרבים\n\nקוד פתוח: github.com/sw0555041250-code/Search-Plus-", null)
+        box.addView(label("יחי אדוננו מורנו ורבנו מלך המשיח לעולם ועד", 16f, Col.ACC, true).apply {
+            gravity = android.view.Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER; setPadding(dp(8), dp(22), dp(8), dp(10))
+        })
     }
 
     private fun version() = try { packageManager.getPackageInfo(packageName, 0).versionName ?: "" } catch (e: Exception) { "" }

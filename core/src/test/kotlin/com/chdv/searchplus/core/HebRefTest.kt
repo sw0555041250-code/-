@@ -93,6 +93,11 @@ class HebRefTest {
         val bm = RefParser.parse("גמרא בבה מיציה דף נט")!!
         assertEquals("בבא מציעא", bm.work); assertEquals(59, bm.daf)
         assertNull(RefParser.parse("ליקוטי שיחות חלק ג׳ פרשת ויצא.")!!.amud)
+        val sah = RefParser.parse("שולחן ערוך אדמו\"ר הזקן סימן רע\"ח סעיף א'")!!
+        assertEquals("שולחן ערוך הרב", sah.work); assertEquals(278, sah.siman); assertEquals(1, sah.seif)
+        assertEquals("שולחן ערוך הרב", RefParser.parse("שו\"ע אדה\"ז סימן ב")!!.work)
+        val ls24 = RefParser.parse("שיחה לפרשת ויצא ליקוטי שיחות חלק כ\"ד עמוד 358")!!
+        assertEquals(24, ls24.volume); assertEquals(358, ls24.page)
         assertNull(RefParser.parse("מה הדין של מי ששכח לברך"))
         assertNull(RefParser.parse("רבי שמעון בר יוחאי"))
     }

@@ -12,6 +12,8 @@
 body { margin: 0; font-family: Heebo, sans-serif; color: var(--ink); background: #fff; font-size: 11.6pt; line-height: 1.5; }
 .page { width: 210mm; height: 297mm; padding: 15mm 17mm 20mm; position: relative; page-break-after: always; overflow: hidden; }
 .page:last-child { page-break-after: auto; }
+.tight { font-size: 10.6pt; line-height: 1.42; }
+.tight h2 { font-size: 18pt; margin-bottom: 3mm; } .tight h3 { margin-top: 3.5mm; } .tight .say { font-size: 9.5pt; padding: .3mm 3mm; }
 .foot { position: absolute; bottom: 8mm; left: 17mm; right: 17mm; display: flex; justify-content: space-between; color: var(--sub); font-size: 9pt; border-top: 1px solid var(--line); padding-top: 3mm; }
 h1 { font-size: 40pt; font-weight: 900; margin: 0; line-height: 1.05; letter-spacing: -0.5px; }
 h2 { font-size: 21pt; font-weight: 900; margin: 0 0 4mm; color: var(--acc); display: flex; align-items: center; gap: 3mm; }
@@ -148,7 +150,7 @@ mark { background: #FFE38A; font-weight: 800; text-decoration: underline; paddin
 </section>
 
 <!-- ================= VOICE ================= -->
-<section class="page">
+<section class="page tight">
   <h2><span class="n">3</span>🎤 חיפוש קולי – אומרים, והספר נפתח</h2>
   <div class="cols">
     <div class="grow">
@@ -162,6 +164,8 @@ mark { background: #FFE38A; font-weight: 800; text-decoration: underline; paddin
       <h3>כל ספר אחר במאגר</h3>
       <p><span class="say">תניא פרק ה</span><span class="say">שולחן ערוך אורח חיים סימן קכח</span><span class="say">רמב״ם הלכות תשובה פרק ג</span></p>
       <p>התוכנה מחפשת את הספר לפי השם, התיקייה ודף השער – גם אם הוא בתיקייה נידחת, וגם אם האיות שונה (ליקוטי/לקוטי, שולחן/שלחן).</p>
+      <h3>⚡ מעבר מהיר – בכתיבה</h3>
+      <p>בתפריט ☰ › "מעבר מהיר": כותבים בקיצור, כמו שרגילים – <span class="say">לקו״ש חכ״ד עמ׳ 358</span><span class="say">שו״ע אדה״ז סימן רע״ח</span> – והתוכנה מבינה את השמות והקיצורים, מציעה אפשרויות ממוספרות ① ② ③, ופותחת.</p>
       <h3>שאלה</h3>
       <p><span class="say">מה מברכים על פרי העץ?</span><span class="say">למה יעקב יצא לחרן?</span> – עוברים לבד לחיפוש לפי משמעות.</p>
     </div>
@@ -229,7 +233,7 @@ mark { background: #FFE38A; font-weight: 800; text-decoration: underline; paddin
 </section>
 
 <!-- ================= WORDS + READER ================= -->
-<section class="page">
+<section class="page tight">
   <h2><span class="n">5</span>🔤 חיפוש מילים – מדויק ומהיר</h2>
   <div class="cols">
     <div class="grow">
@@ -258,7 +262,7 @@ mark { background: #FFE38A; font-weight: 800; text-decoration: underline; paddin
       </ul>
       <h3>אפליקציה משלך כברירת מחדל (ReadEra וכו׳)</h3>
       <p>הגדרות › <b>באיזו אפליקציה לפתוח ספרים</b> › בוחרים פעם אחת – ומאז כל ספר נפתח שם ישר, בלי השאלה "פתיחה באמצעות". התוכנה שולחת את מספר העמוד, ומעתיקה את מילות החיפוש כדי שאפשר יהיה להדביק אותן בחיפוש של הקורא. אפשר לשנות בכל רגע.</p>
-      <div class="tip">ℹ סימון אוטומטי של המילים על העמוד אפשרי רק בקורא המובנה – אפליקציות אחרות לא מקבלות מבחוץ אילו מילים לסמן.</div>
+      <div class="tip">📖 <b>ReadEra ודומיו:</b> התוכנה שולחת לאפליקציה את העמוד שנמצא ו-4 העמודים שאחריו, עם המילים מסומנות בצהוב – כך הקורא נפתח ישר על המקום, מסומן.<br>📜 <b>ספרים סרוקים:</b> המילים מזוהות בתוך התמונה ומסומנות; ב-⋯ › "תצוגת טקסט" רואים את העמוד כטקסט מסודר.</div>
     </div>
     <div>
       <div class="phone">
@@ -276,7 +280,7 @@ mark { background: #FFE38A; font-weight: 800; text-decoration: underline; paddin
 </section>
 
 <!-- ================= ORGANIZE + FAQ ================= -->
-<section class="page">
+<section class="page tight">
   <h2><span class="n">7</span>🗂 סידור המאגר</h2>
   <p>התוכנה כבר מכירה את כל הספרים מהסריקה, ולכן הסידור מהיר ולא קורא את הספרים מחדש.</p>
   <ul>
@@ -285,7 +289,9 @@ mark { background: #FFE38A; font-weight: 800; text-decoration: underline; paddin
     <li><b>שמות חכמים</b> – שם לפי דף השער והתוכן, עם אישור על כל שינוי. הכול ניתן לביטול.</li>
   </ul>
 
-  <h2 style="margin-top:6mm"><span class="n">8</span>יציבות ו-BOOX</h2>
+  <h2 style="margin-top:6mm"><span class="n">8</span>☁ ספרים מ-Google Drive</h2>
+  <p>☰ › "ספרים מ-Google Drive" › "חיבור לחשבון": מתחברים פעם אחת, בוחרים תיקיות, והספרים נכנסים למאגר – לחיפוש, לחיפוש הקולי ולשאלות, בתוך המכשיר.</p>
+  <h2 style="margin-top:6mm"><span class="n">9</span>יציבות ו-BOOX</h2>
   <ul>
     <li>מותאם ל-BOOX Go 6 (אנדרואיד 11, 2GB RAM, מסך E-ink): ניגודיות גבוהה, בלי אנימציות, דפדוף בעמודים שלמים.</li>
     <li>שני מודלי AI אף פעם לא נטענים יחד. כשהמכשיר עמוס – המודלים משתחררים ונטענים שוב כשצריך.</li>
@@ -293,7 +299,7 @@ mark { background: #FFE38A; font-weight: 800; text-decoration: underline; paddin
     <li>אם משהו משתבש – התוכנה לא נסגרת בגלל ספר אחד פגום, והפרטים נשמרים להעתקה ושליחה.</li>
   </ul>
 
-  <h2 style="margin-top:6mm"><span class="n">9</span>שאלות נפוצות</h2>
+  <h2 style="margin-top:6mm"><span class="n">10</span>שאלות נפוצות</h2>
   <h3>החיפוש הקולי לא הבין אותי</h3>
   <p>מדברים ברור, קרוב למכשיר, ואומרים את שם הספר בהתחלה ("ברכות דף…"). בהגדרות › חיפוש קולי › "בדיקת החיפוש הקולי" אפשר לראות בדיוק מה נשמע. אם בחרתם במודל המהיר – עברו למדויק.</p>
   <h3>"לא נמצא ספר כזה במאגר"</h3>
@@ -303,7 +309,7 @@ mark { background: #FFE38A; font-weight: 800; text-decoration: underline; paddin
   <h3>איך מעדכנים?</h3>
   <p>התוכנה בודקת פעם ביום ומציעה להתקין גרסה חדשה. אפשר גם: הגדרות › בדיקת עדכונים עכשיו.</p>
 
-  <div class="box" style="margin-top:6mm"><b>קוד פתוח</b> · <span dir="ltr">github.com/sw0555041250-code/Search-Plus-</span> · כל הקוד, ההסבר למפתחים (HANDOFF.md) והגרסאות.<br>פותח על ידי <b>שניאור וילהלם</b> · מופץ בחינם לתועלת הרבים</div>
+  <div class="box" style="margin-top:6mm"><b>קוד פתוח</b> · <span dir="ltr">github.com/sw0555041250-code/Search-Plus-</span> · כל הקוד, ההסבר למפתחים (HANDOFF.md) והגרסאות.<br>פותח על ידי <b>שניאור וילהלם</b> · מופץ בחינם לתועלת הרבים<br><b style="color:var(--acc)">יחי אדוננו מורנו ורבנו מלך המשיח לעולם ועד</b></div>
   <div class="foot"><span>חיפוש פלוס – מדריך</span><span>6</span></div>
 </section>
 </body>

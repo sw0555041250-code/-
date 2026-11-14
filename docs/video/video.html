@@ -187,6 +187,35 @@ const S = {
     scr().innerHTML = reader('לקוטי שיחות חלק ד עמוד 58', 'לקוטי שיחות', '58', lines(30, 4));
     await wait(d * .6 - 100);
   },
+  async quick(d) {
+    scr().innerHTML = head() + `<div class="body"><div class="hero" style="background:linear-gradient(135deg,#E0712C,#FFA65C)"><b>⚡ לאן לקפוץ?</b><span style="font-size:12px;opacity:.9">כותבים ספר ומקום – והוא נפתח</span></div></div>` + search('', false) + `<div class="body"><div class="und" id="und" style="color:var(--acc);font-weight:800;font-size:13.5px;min-height:20px"></div><div id="res"></div></div>`;
+    await type($('#q'), 'לקו״ש חלק כ״ד עמוד 358', d * .22);
+    $('#und').textContent = '✓ מצאתי! לקוטי שיחות חלק כד עמוד 358 – לחצו לפתיחה';
+    $('#res').innerHTML = `<div class="row in" style="background:var(--light);border:1px solid var(--acc);border-radius:12px;padding:9px"><div class="t">📖 לקוטי שיחות חלק כד</div><div class="f">חסידות › רבותינו נשיאינו · עמוד 366</div></div>`;
+    await wait(d * .22);
+    $('#q').textContent = ''; $('#und').textContent = ''; $('#res').innerHTML = '';
+    await type($('#q'), 'שו״ע אדה״ז סימן רע״ח', d * .2);
+    $('#und').textContent = '✓ מצאתי לך 3 אפשרויות לשולחן ערוך הרב סימן רעח – באיזו לפתוח?';
+    $('#res').innerHTML = ['① שולחן ערוך הרב – חלק ב', '② שולחן ערוך הרב – מהדורה חדשה', '③ שו״ע אדמו״ר הזקן – ביאורים'].map(t => `<div class="row" style="border:1px solid var(--acc);border-radius:12px;margin:5px 0;padding:9px;background:var(--light)"><div class="t">${t}</div><div class="f">הלכה › שולחן ערוך הרב · סימן רעח</div></div>`).join('');
+    for (const r of document.querySelectorAll('#res .row')) { r.classList.add('in'); await wait(d * .06); }
+    await wait(d * .15);
+  },
+  async scanned(d) {
+    scr().innerHTML = reader('חיפוש: ״ויצא יעקב״', 'ספר ישן · סרוק', '212', `<div style="filter:sepia(.5) contrast(.9);background:#f3ead7;padding:8px;border-radius:4px">${lines(10, 3)}<div class="para"><span id="hl" style="background:#FFE38A;outline:3px solid #E65100;border-radius:4px;padding:0 3px;font-weight:800">ויצא יעקב מבאר שבע</span> וילך חרנה…</div>${lines(12, 8)}</div>`);
+    for (let k = 0; k < 3; k++) { await wait(d * .1); $('#hl').style.outlineWidth = '7px'; await wait(d * .08); $('#hl').style.outlineWidth = '3px'; }
+    await wait(d * .1);
+    scr().innerHTML = `<div class="head"><div class="ttl">📄 תצוגת טקסט – שורות מסודרות</div></div><div class="body" style="font-size:15px;line-height:1.8"><mark>ויצא יעקב מבאר שבע וילך חרנה.</mark> ויפגע במקום וילן שם כי בא השמש, ויקח מאבני המקום וישם מראשותיו, וישכב במקום ההוא.</div>`;
+    await wait(d * .35);
+  },
+  async drive(d) {
+    scr().innerHTML = `<div class="head"><div class="ttl">☁ ספרים מ-Google Drive</div></div><div class="body"><div class="hero" style="background:linear-gradient(135deg,#0E9F8E,#35CDB4)"><b>🔗 חיבור לחשבון Google Drive</b><span style="font-size:12px">קריאה בלבד · פעם אחת</span></div><div class="counter" id="dc" style="margin-top:12px">מחפש ספרים ב-Drive…</div><div id="fl"></div></div>`;
+    await wait(d * .25);
+    $('#dc').textContent = 'נמצאו 1,284 ספרים (6.2GB) – בחרו תיקיות';
+    $('#fl').innerHTML = ['☑ 📁 חסידות · 512 ספרים', '☑ 📁 גמרא · 140 ספרים', '☑ 📁 הלכה · 233 ספרים', '☐ 📁 שונות · 399 ספרים'].map(t => `<div class="fo in">${t}</div>`).join('');
+    await wait(d * .3);
+    $('#dc').textContent = '⬇ מביא… 885 / 885 ✓ נכנסו למאגר';
+    await wait(d * .4);
+  },
   async words(d) {
     scr().innerHTML = head() + search('', false) + modes(false) + `<div style="padding:4px 12px"><span class="chip on">הכל</span> › <span class="chip" id="cat">📁 חסידות חב״ד (184)</span><span class="chip">📁 גמרא (61)</span><span class="chip">📁 הלכה (22)</span></div><div style="color:var(--sub);font-size:12px;padding:2px 14px" id="sum"></div><div class="body" id="res"></div>`;
     await type($('#q'), 'רבי שמעון בר יוחאי', d * .2);

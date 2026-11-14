@@ -506,6 +506,7 @@ class MainActivity : BaseActivity() {
                 "• לחיצה על תוצאה פותחת את הספר בדיוק בעמוד, והמילים מסומנות.\n" +
                 "• 🎤 חיפוש קולי: לוחצים על המיקרופון ואומרים – \"ברכות דף כ״ז עמוד א\", \"ליקוטי שיחות חלק ג ויצא\", או שאלה. התוכנה פותחת ישר את המקום.", 14.5f, Col.SUB).apply { setLineSpacing(0f, 1.15f) })
         homeBox.addView(label("\nפותח על ידי שניאור וילהלם · מופץ לתועלת הרבים", 12.5f, Col.SUB).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER })
+        homeBox.addView(label("יחי אדוננו מורנו ורבנו מלך המשיח לעולם ועד", 14f, Col.ACC, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER; setPadding(0, dp(6), 0, dp(10)) })
         if (!Col.isEink) for (i in 0 until minOf(homeBox.childCount, 8)) homeBox.getChildAt(i).apply {
             alpha = 0f; translationY = dp(18).toFloat()
             animate().alpha(1f).translationY(0f).setStartDelay(i * 60L).setDuration(380).setInterpolator(android.view.animation.DecelerateInterpolator()).start()

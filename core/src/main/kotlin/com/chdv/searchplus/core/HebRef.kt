@@ -167,6 +167,7 @@ data class Ref(
     val amud: Int? = null,
     val chapter: Int? = null,
     val siman: Int? = null,
+    val seif: Int? = null,
     val sicha: Int? = null,
     val parsha: String? = null,
     /** A printed page number ("עמוד 45" in a book that is not Gemara). */
@@ -184,6 +185,7 @@ data class Ref(
         amud?.let { append(if (it == 1) " ע״א" else " ע״ב") }
         chapter?.let { append(" פרק ").append(HebNum.toHeb(it)) }
         siman?.let { append(" סימן ").append(HebNum.toHeb(it)) }
+        seif?.let { append(" סעיף ").append(HebNum.toHeb(it)) }
         page?.let { append(" עמוד ").append(it) }
     }
 }
@@ -310,7 +312,7 @@ object RefParser {
 
         // ---- numbers by their keyword ----
         var volume: Int? = null; var daf: Int? = null; var amud: Int? = null; var chapter: Int? = null
-        var siman: Int? = null; var sicha: Int? = null; var page: Int? = null
+        var siman: Int? = null; var seif: Int? = null; var sicha: Int? = null; var page: Int? = null
         var i = 0
         while (i < tokens.size) {
             val t = tokens[i]
@@ -328,7 +330,8 @@ object RefParser {
                     num()?.let { volume = it }
                 }
                 "פרק", "בפרק", "לפרק" -> { num()?.let { chapter = it } }
-                "סימן", "בסימן", "סעיף" -> { num()?.let { siman = it } }
+                "סימן", "בסימן", "סי" -> { num()?.let { siman = it } }
+                "סעיף", "בסעיף", "סע" -> { num()?.let { if (siman == null) siman = it else seif = it } }
                 "שיחה", "בשיחה", "שיחת" -> { num()?.let { sicha = it } }
                 "עמוד", "בעמוד", "עמ", "צד", "צפחה" -> {
                     // after a daf: amud a/b. Otherwise: a page number.
@@ -399,9 +402,11 @@ object RefParser {
         if (kind == Ref.Kind.GENERIC) {
             if (extra.isEmpty()) return null
             work = extra.joinToString(" ")
+            // a known book under any of its names ("שו״ע אדמו״ר הזקן" = שולחן ערוך הרב)
+            Works.canonical(work!!)?.let { work = it }
         }
         return Ref(kind, work!!, if (kind == Ref.Kind.GENERIC) emptyList() else extra,
-            volume, daf, amud, chapter, siman, sicha, parsha, page)
+            volume, daf, amud, chapter, siman, seif, sicha, parsha, page)
     }
 
     private fun looksLikeDafAfter(tokens: List<String>, i: Int): Boolean {
@@ -414,6 +419,65 @@ object RefParser {
         "א", "אלף", "ראשון", "1", "a" -> 1
         "ב", "בית", "שני", "2", "b" -> 2
         else -> null
+    }
+}
+
+/**
+ * The names people use for the same book: abbreviations (שו״ע, לקו״ש, אג״ק), the author's title
+ * (שולחן ערוך אדמו״ר הזקן = שולחן ערוך הרב), other spellings. Used to understand a request and to find
+ * the book in the library under whatever name its file has.
+ */
+object Works {
+    /** canonical name → other names (normalized: no quotes, no nikud) */
+    val ALIASES: Map<String, List<String>> = linkedMapOf(
+        "שולחן ערוך הרב" to listOf("שולחן ערוך אדמור הזקן", "שולחן ערוך של אדמור הזקן", "שוע אדמור הזקן", "שוע הרב", "שוע אדהז", "שלחן ערוך הרב", "שולחן ערוך אדהז", "אדמור הזקן שולחן ערוך", "שולחן ערוך רבנו הזקן"),
+        "ליקוטי שיחות" to listOf("לקוטי שיחות", "לקוש", "ליקוש"),
+        "תורת מנחם" to listOf("תומ", "תורת מנחם התוועדויות", "התוועדויות"),
+        "אגרות קודש" to listOf("אגרות קדש", "איגרות קודש", "אגק", "אגרות"),
+        "ספר המאמרים" to listOf("סהמ", "ספר המאמרים מלוקט", "מאמרים"),
+        "תניא" to listOf("ליקוטי אמרים", "לקוטי אמרים", "ספר התניא"),
+        "משנה תורה" to listOf("רמבם", "הרמבם", "משנה תורה להרמבם", "יד החזקה"),
+        "משנה ברורה" to listOf("מב", "משנב"),
+        "ליקוטי תורה" to listOf("לקוטי תורה", "לקות"),
+        "תורה אור" to listOf("תוא"),
+        "היום יום" to listOf("היום יום"),
+        "שולחן ערוך" to listOf("שוע", "שלחן ערוך", "מחבר"),
+        "קיצור שולחן ערוך" to listOf("קיצור שוע", "קצשוע", "קיצשוע"),
+        "ספר השיחות" to listOf("סהש"),
+        "שערי תשובה" to listOf("שערי תשובה"),
+        "זוהר" to listOf("זהר", "ספר הזוהר"),
+        "חומש" to listOf("תורה", "מקראות גדולות", "חמשה חומשי תורה"),
+        "אורח חיים" to listOf("אוח", "או״ח"),
+        "יורה דעה" to listOf("יוד", "יו״ד"),
+        "אבן העזר" to listOf("אהע", "אה״ע"),
+        "חושן משפט" to listOf("חומ", "חו״מ", "חשן משפט"),
+    )
+
+    private fun n(s: String) = RefParser.normalize(s)
+
+    /** The canonical name hidden in a request (longest match), with the rest kept: "שוע אדהז אוח" → "שולחן ערוך הרב אורח חיים". */
+    fun canonical(text: String): String? {
+        var out = " " + n(text) + " "
+        var changed = false
+        val all = ALIASES.flatMap { (c, l) -> (l + c).map { n(it) to c } }.sortedByDescending { it.first.length }
+        val done = HashSet<String>()
+        for ((alias, c) in all) {
+            if (c in done) continue
+            if (out.contains(" $alias ")) {
+                // mark the replaced name (§) so a shorter alias inside it is not replaced again
+                out = out.replace(" $alias ", " §" + c.replace(' ', '¦') + "§ ")
+                changed = true; done.add(c)
+            }
+        }
+        if (!changed) return null
+        return out.replace("§", "").replace('¦', ' ').replace(Regex("\\s+"), " ").trim()
+    }
+
+    /** Every name a book may carry, for matching file and folder names. */
+    fun variants(name: String): List<String> {
+        val nn = n(name)
+        for ((c, l) in ALIASES) if (n(c) == nn || l.any { n(it) == nn }) return (listOf(c) + l).map(::n).distinct()
+        return listOf(nn)
     }
 }
 

@@ -27,6 +27,8 @@ class VoiceActivity : BaseActivity() {
     private lateinit var results: LinearLayout
     private lateinit var status: TextView
     private var token = 0
+    private val typing by lazy { intent.getStringExtra("mode") == "type" }
+    private val live = Runnable { val t = heard.text.toString().trim(); if (t.length >= 3) handle(t, false, quiet = true) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,7 +48,13 @@ class VoiceActivity : BaseActivity() {
         mic.addView(label("לחצו ודברו", 22f, Color.WHITE, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER; setPadding(0, dp(12), 0, 0) }, lp(MATCH, WRAP))
         status = label(engineNote(), 13.5f, 0xFFE6E9FF.toInt()).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }
         mic.addView(status, lp(MATCH, WRAP))
-        box.addView(mic, lp(MATCH, WRAP).m(0, dp(4), 0, dp(14)))
+        if (!typing) box.addView(mic, lp(MATCH, WRAP).m(0, dp(4), 0, dp(14)))
+        else box.addView(vbox().apply {
+            background = Col.gradient(Col.TILES[3].first, Col.TILES[3].second, dp(20).toFloat())
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+            addView(label("⚡ לאן לקפוץ?", 22f, Color.WHITE, true))
+            addView(label("כותבים ספר ומקום – והוא נפתח. למשל: \"לקו״ש חלק כ״ד עמוד 358\", \"ברכות כ״ג\", \"שו״ע אדה״ז סימן רע״ח\"", 14f, 0xEEFFFFFF.toInt()).apply { setPadding(0, dp(6), 0, 0) })
+        }, lp(MATCH, WRAP).m(0, dp(4), 0, dp(14)))
 
         // what was heard – can be corrected by hand
         box.addView(label("שמעתי", 13.5f, Col.SUB, true))
@@ -59,7 +67,17 @@ class VoiceActivity : BaseActivity() {
             setOnEditorActionListener { _, a, _ -> if (a == EditorInfo.IME_ACTION_SEARCH) { handle(text.toString(), false); true } else false }
         }
         row.addView(heard, lp(0, WRAP, 1f))
-        row.addView(pill("חיפוש") { handle(heard.text.toString(), false) }, lp(WRAP, WRAP))
+        if (typing) row.addView(label("🎤", 22f, Col.ACC, true).apply { setPadding(dp(8), dp(4), dp(8), dp(4)); setOnClickListener { listen() } })
+        row.addView(pill(if (typing) "לפתוח" else "חיפוש") { handle(heard.text.toString(), typing) }, lp(WRAP, WRAP))
+        if (typing) heard.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(e: android.text.Editable?) {
+                // live: what was understood and where it leads, while typing
+                heard.removeCallbacks(live)
+                heard.postDelayed(live, 550)
+            }
+        })
         box.addView(row, lp(MATCH, WRAP).m(0, dp(4), 0, dp(10)))
 
         understood = label("", 16f, Col.ACC, true)
@@ -75,7 +93,8 @@ class VoiceActivity : BaseActivity() {
         }
         box.addView(ex, lp(MATCH, WRAP))
 
-        screen("🎤 חיפוש קולי", ScrollView(this).apply { addView(box) })
+        screen(if (typing) "⚡ מעבר מהיר" else "🎤 חיפוש קולי", ScrollView(this).apply { addView(box) })
+        if (typing) heard.post { heard.requestFocus(); (getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).showSoftInput(heard, 0) }
         intent.getStringExtra("q")?.let { heard.setText(it); handle(it, true) }
         if (intent.getBooleanExtra("listen", false) && savedInstanceState == null && intent.getStringExtra("q") == null) heard.post { listen() }
     }
@@ -95,10 +114,10 @@ class VoiceActivity : BaseActivity() {
     }
 
     /** Spoken (or typed) words → a place in a book, or the books that contain them. */
-    private fun handle(raw: String, auto: Boolean) {
+    private fun handle(raw: String, auto: Boolean, quiet: Boolean = false) {
         val text = raw.trim().trimEnd('.', '?', '!')
         if (text.isEmpty()) return
-        Library.addHistory(text)
+        if (!quiet) Library.addHistory(text)
         val my = ++token
         results.removeAllViews()
         understood.text = "מחפש…"
@@ -120,12 +139,22 @@ class VoiceActivity : BaseActivity() {
     private fun show(text: String, ref: Ref?, noDaf: Boolean, targets: List<Jump.Target>, words: Results?, auto: Boolean) {
         results.removeAllViews()
         when {
-            noDaf -> understood.text = "הבנתי: מסכת ${ref!!.work} – אבל לא את מספר הדף. נסו שוב: \"${ref.work} דף כ״ז עמוד א\""
-            ref != null && targets.isNotEmpty() -> understood.text = "הבנתי: ${ref.label()}" + if (targets.size > 1) " · נמצא ב-${targets.size} ספרים – בחרו" else ""
-            ref != null -> understood.text = "הבנתי: ${ref.label()} – אבל אין ספר כזה במאגר" + if (Progress.running) " (הסריקה עדיין רצה)" else ". הנה הספרים עם המילים:"
+            noDaf -> understood.text = "הבנתי שמדובר במסכת ${ref!!.work} – איזה דף? למשל: \"${ref.work} דף כ״ז עמוד א\""
+            ref != null && targets.size == 1 -> understood.text = "✓ מצאתי! ${ref.label()} – " + if (targets[0].exact) "לחצו לפתיחה" else "בעמוד המשוער, אפשר לתקן בקורא"
+            ref != null && targets.isNotEmpty() -> understood.text = "✓ מצאתי לך ${targets.size} אפשרויות ל${ref.label()} – באיזו לפתוח?"
+            ref != null -> understood.text = "חיפשתי ${ref.label()} – אבל לא מצאתי ספר כזה במאגר" + (if (Progress.running) " (הסריקה עדיין רצה)" else "")
             else -> understood.text = "חיפוש המילים: \"$text\""
         }
-        for (t in targets) results.addView(card("📖 ${t.book.title}", Library.categoryOf(t.book.dir).joinToString(" › ") + " · " + t.note, true) {
+        // no such book: the closest names in the library
+        if (ref != null && targets.isEmpty()) {
+            val sug = try { Jump.suggest(text) } catch (e: Throwable) { emptyList() }
+            if (sug.isNotEmpty()) {
+                results.addView(label("אולי התכוונת ל:", 14.5f, Col.SUB, true).apply { setPadding(dp(4), dp(4), dp(4), dp(2)) })
+                for (b in sug) results.addView(card("📖 ${b.title}", Library.categoryOf(b.dir).joinToString(" › "), false) { ReaderActivity.open(this, b.path, 1) })
+            }
+        }
+        val nums = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫"
+        for ((k, t) in targets.withIndex()) results.addView(card((if (targets.size > 1) "${nums.getOrElse(k) { '•' }}  " else "📖 ") + t.book.title, Library.categoryOf(t.book.dir).joinToString(" › ") + " · " + t.note, true) {
             ReaderActivity.open(this, t.book.path, t.page, refLabel = t.ref.label(), amudIndex = t.amudIndex ?: -1, exact = t.exact)
         })
         if (words != null) {

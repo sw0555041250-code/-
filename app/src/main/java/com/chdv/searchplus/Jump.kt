@@ -1,5 +1,6 @@
 package com.chdv.searchplus
 
+import com.chdv.searchplus.core.HebNum
 import com.chdv.searchplus.core.PageFinder
 import com.chdv.searchplus.core.Ref
 import com.chdv.searchplus.core.RefParser
@@ -50,20 +51,47 @@ object Jump {
                     }
                 }
                 Ref.Kind.GENERIC -> {
-                    val words = RefParser.normalize(ref.work).split(' ').filter { it.length >= 2 }
-                    val tk = (title + path).split(' ').filter { it.length >= 2 }.map(::key).toSet()
+                    val all = title + path
+                    // known books: the file may carry any of the book's names (שו״ע הרב / שולחן ערוך אדמו״ר הזקן …)
+                    val groups = com.chdv.searchplus.core.Works.ALIASES.keys.filter { c -> RefParser.normalize(ref.work).contains(RefParser.normalize(c)) }
+                    var rest = RefParser.normalize(ref.work)
+                    var g = 0
+                    for (c in groups.sortedByDescending { it.length }) {
+                        if (!rest.contains(RefParser.normalize(c))) continue
+                        rest = rest.replace(RefParser.normalize(c), " ")
+                        if (com.chdv.searchplus.core.Works.variants(c).any { v -> has(all, v) || v.split(' ').all { w -> has(all, w) } }) g++ else { g = -1; break }
+                    }
+                    if (g < 0) continue
+                    val words = rest.split(' ').filter { it.length >= 2 }
+                    val tk = all.split(' ').filter { it.length >= 2 }.map(::key).toSet()
                     val hit = words.count { has(title, it) || has(path, it) || (key(it).length >= 2 && key(it) in tk) }
-                    if (hit < maxOf(1, (words.size + 1) / 2)) continue
-                    score += hit * 5 + (if (words.all { has(title, it) }) 10 else 0)
+                    if (g == 0 && hit < maxOf(1, (words.size + 1) / 2)) continue
+                    score += g * 15 + hit * 5 + (if (words.isNotEmpty() && words.all { has(title, it) }) 10 else 0)
                 }
             }
             for (e in ref.extra) if (has(title, e) || has(path, e)) score += 6
             scored.add(b to score)
         }
-        return scored.sortedByDescending { it.second }.take(12).mapNotNull { (b, _) ->
+        val located = scored.sortedByDescending { it.second }.take(if (ref.siman != null || ref.chapter != null) 30 else 12).mapNotNull { (b, _) ->
             try { locate(b, ref) } catch (e: Throwable) { Target(b, 1, false, ref, null) }
         }
+        // a siman / chapter: a work in several volumes – keep the volumes where it was really found
+        if ((ref.siman != null || ref.chapter != null) && located.any { it.exact }) return located.filter { it.exact }.take(12)
+        return located.take(12)
     }
+
+    /** No such book: the closest names in the library ("did you mean…"). */
+    fun suggest(text: String, max: Int = 5): List<Book> {
+        val q = RefParser.normalize(text).split(' ').filter { it.length >= 2 && it !in setOf("דף", "עמוד", "חלק", "סימן", "פרק", "שיחה", "סעיף") && HebNum0(it) }
+        if (q.isEmpty()) return emptyList()
+        val qk = q.map(::key)
+        return Db.get().books().values.map { b ->
+            val tk = norm(b.title + " " + b.dir.substringAfterLast('/')).split(' ').filter { it.length >= 2 }.map(::key).toSet()
+            b to qk.count { it in tk }
+        }.filter { it.second > 0 }.sortedByDescending { it.second }.take(max).map { it.first }
+    }
+
+    private fun HebNum0(w: String) = com.chdv.searchplus.core.HebNum.gematria(w) == null || w.length > 3
 
     private fun locate(b: Book, ref: Ref): Target {
         val pages = Db.get().pageTexts(b.id)
@@ -104,7 +132,12 @@ object Jump {
             Ref.Kind.GENERIC -> {
                 val sorted = pages.keys.sorted()
                 ref.chapter?.let { c -> sorted.firstOrNull { PageFinder.hasNumbered(pages[it]!!, "פרק", c) }?.let { return Target(b, it, true, ref, null) } }
-                ref.siman?.let { s -> sorted.firstOrNull { PageFinder.hasNumbered(pages[it]!!, "סימן", s) }?.let { return Target(b, it, true, ref, null) } }
+                ref.siman?.let { s ->
+                    sorted.firstOrNull { PageFinder.hasNumbered(pages[it]!!, "סימן", s) }?.let { return Target(b, it, true, ref, null) }
+                    // the siman starts in the middle of a page
+                    val mark = Regex("(^|\\s)סימן\\s+${HebNum.toHeb(s)}(\\s|$)")
+                    sorted.firstOrNull { mark.containsMatchIn(RefParser.normalize(pages[it]!!)) }?.let { return Target(b, it, true, ref, null) }
+                }
                 ref.parsha?.let { pr -> sorted.firstOrNull { PageFinder.headerHas(pages[it]!!, RefParser.normalize(pr).split(' ')) }?.let { return Target(b, it, true, ref, null) } }
                 ref.page?.let { pr -> val (pg, ok) = PageFinder.pageOfPrinted(pages, pr, count); return Target(b, pg, ok, ref, null) }
                 return Target(b, 1, false, ref, null)

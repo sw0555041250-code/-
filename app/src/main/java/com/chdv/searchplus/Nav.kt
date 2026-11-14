@@ -20,6 +20,7 @@ object Nav {
     class Item(val icon: String, val title: String, val sub: String, val go: (Activity) -> Unit)
 
     val ITEMS: List<Item> = listOf(
+        Item("⚡", "מעבר מהיר", "כותבים ספר ומקום – והוא נפתח", { a -> a.startActivity(Intent(a, VoiceActivity::class.java).putExtra("mode", "type")) }),
         Item("🎤", "חיפוש קולי", "אומרים – והספר נפתח במקום", { a -> a.startActivity(Intent(a, VoiceActivity::class.java).putExtra("listen", true)) }),
         Item("💡", "שאלה ותשובה", "חיפוש לפי משמעות", { a -> a.startActivity(Intent(a, MainActivity::class.java).putExtra("screen", "meaning").addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)) }),
         Item("🔤", "חיפוש מילים", "מילה או ביטוי בתוך כל הספרים", { a -> a.startActivity(Intent(a, MainActivity::class.java).putExtra("screen", "words").addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)) }),
@@ -68,13 +69,20 @@ object Nav {
         row("🏠", "מסך הבית", "חיפוש, היסטוריה, מועדפים", 0) {
             a.startActivity(Intent(a, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra("screen", "home"))
         }
-        ITEMS.forEachIndexed { i, it -> row(it.icon, it.title, it.sub, i) { it.go(a) } }
+        list.addView(a.label("חיפוש", 12.5f, Col.SUB, true).apply { setPadding(a.dp(10), a.dp(10), a.dp(10), a.dp(2)) })
+        ITEMS.forEachIndexed { i, it ->
+            if (i == 4) list.addView(a.label("הספרייה", 12.5f, Col.SUB, true).apply { setPadding(a.dp(10), a.dp(10), a.dp(10), a.dp(2)) })
+            row(it.icon, it.title, it.sub, i) { it.go(a) }
+        }
         list.addView(a.divider(), lp(MATCH, 1).m(0, a.dp(8), 0, a.dp(8)))
         row("⟳", "בדיקת עדכונים", "גרסה " + (try { a.packageManager.getPackageInfo(a.packageName, 0).versionName } catch (e: Exception) { "" }), 5) { Updater.check(a, false) }
         row("❓", "עזרה ואודות", "המדריך המלא, הסרטון והאתר", 1) { help(a) }
         panel.addView(ScrollView(a).apply { addView(list) }, lp(MATCH, 0, 1f))
         panel.addView(a.label("פותח על ידי שניאור וילהלם · לתועלת הרבים", 11.5f, Col.SUB).apply {
             gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER; setPadding(0, a.dp(8), 0, 0)
+        }, lp(MATCH, WRAP))
+        panel.addView(a.label("יחי אדוננו מורנו ורבנו מלך המשיח לעולם ועד", 12.5f, Col.ACC, true).apply {
+            gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER; setPadding(0, a.dp(4), 0, 0)
         }, lp(MATCH, WRAP))
 
         d.setContentView(panel)
