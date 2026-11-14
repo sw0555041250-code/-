@@ -23,6 +23,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.chdv.searchplus.core.RefParser
 import java.io.File
 import java.util.concurrent.Executors
 
@@ -37,6 +38,7 @@ class MainActivity : BaseActivity() {
     private lateinit var crumbs: FlowLayout
     private lateinit var cats: FlowLayout
     private lateinit var summary: TextView
+    private lateinit var jumpBar: TextView
     private lateinit var list: RecyclerView
     private lateinit var home: ScrollView
     private lateinit var homeBox: LinearLayout
@@ -64,6 +66,15 @@ class MainActivity : BaseActivity() {
             Indexer.start(this)
         }
         Updater.dailyCheck(this)
+        val crash = File(filesDir, "crash.txt")
+        if (crash.exists()) {
+            val t = try { crash.readText() } catch (e: Exception) { "" }
+            crash.delete()
+            Sheet.confirm(this, "התוכנה נתקלה בשגיאה", "בפעם הקודמת משהו השתבש. הפרטים הטכניים נשמרו – אפשר להעתיק אותם ולשלוח למפתח.", "העתקת הפרטים") {
+                (getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("crash", t))
+                toast("הועתק")
+            }
+        }
         tick.run()
         if (results == null) showHome()
     }
@@ -121,7 +132,7 @@ class MainActivity : BaseActivity() {
             setPadding(dp(14), dp(2), dp(4), dp(2))
         }
         input = EditText(this).apply {
-            hint = "מה לחפש? לדוגמה: רבי שמעון"
+            hint = "מה לחפש? או לחצו 🎤 ודברו"
             setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18f * scale())
             setTextColor(Col.TEXT)
             setHintTextColor(0xFF8A8A8A.toInt())
@@ -136,7 +147,13 @@ class MainActivity : BaseActivity() {
         box.addView(input, lp(0, WRAP, 1f))
         box.addView(label("✕", 18f, Col.SUB).apply {
             setPadding(dp(10), dp(8), dp(10), dp(8))
-            setOnClickListener { input.setText(""); results = null; showHome() }
+            setOnClickListener { input.setText(""); results = null; jumpBar.visibility = View.GONE; showHome() }
+        })
+        box.addView(label("🎤", 22f, Col.ACC, true).apply {
+            setPadding(dp(10), dp(6), dp(10), dp(6))
+            background = pressBg(Color.TRANSPARENT, Col.ACC_LIGHT, 18)
+            contentDescription = "חיפוש קולי"
+            setOnClickListener { VoiceSearch.start(this@MainActivity) { t -> onVoice(t) } }
         })
         box.addView(pill("חיפוש") { doSearch() }, lp(WRAP, WRAP))
         root.addView(box, lp(MATCH, WRAP).m(dp(12), dp(4), dp(12), dp(6)))
@@ -154,6 +171,12 @@ class MainActivity : BaseActivity() {
         root.addView(crumbs, lp(MATCH, WRAP))
         cats = FlowLayout(this).apply { setPadding(dp(12), dp(6), dp(12), dp(2)) }
         root.addView(cats, lp(MATCH, WRAP))
+        jumpBar = label("", 15.5f, Color.WHITE, true).apply {
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = pressBg(Col.ACC, 0xFF0F2540.toInt(), 14)
+            visibility = View.GONE
+        }
+        root.addView(jumpBar, lp(MATCH, WRAP).m(dp(12), dp(6), dp(12), 0))
         summary = label("", 13.5f, Col.SUB).apply { setPadding(dp(14), dp(6), dp(14), dp(4)) }
         root.addView(summary, lp(MATCH, WRAP))
         root.addView(divider())
@@ -329,7 +352,8 @@ class MainActivity : BaseActivity() {
                 "• \"כולל ו׳ ה׳ ב׳…\" – מוצא גם \"ורבי שמעון\", \"לרבי שמעון\".\n" +
                 "• אחרי החיפוש לוחצים על קטגוריה (תיקייה) כדי למקד – ושוב על תת-תיקייה, וכן הלאה.\n" +
                 "• חיפוש לפי משמעות: כותבים רעיון במילים שלך ומקבלים קטעים שעוסקים בו.\n" +
-                "• לחיצה על תוצאה פותחת את הספר בדיוק בעמוד, והמילים מסומנות.", 14.5f, Col.SUB).apply { setLineSpacing(0f, 1.15f) })
+                "• לחיצה על תוצאה פותחת את הספר בדיוק בעמוד, והמילים מסומנות.\n" +
+                "• 🎤 חיפוש קולי: לוחצים על המיקרופון ואומרים – \"ברכות דף כ״ז עמוד א\", \"ליקוטי שיחות חלק ג ויצא\", או שאלה. התוכנה פותחת ישר את המקום.", 14.5f, Col.SUB).apply { setLineSpacing(0f, 1.15f) })
         homeBox.addView(label("\nפותח על ידי שניאור וילהלם · מופץ לתועלת הרבים", 12.5f, Col.SUB).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER })
     }
 
@@ -347,7 +371,7 @@ class MainActivity : BaseActivity() {
 
     // ---------------- search ----------------
 
-    private fun doSearch() {
+    private fun doSearch(autoOpen: Boolean = false) {
         val q = input.text.toString().trim()
         if (q.isEmpty()) return
         (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(input.windowToken, 0)
@@ -360,11 +384,12 @@ class MainActivity : BaseActivity() {
         crumbs.removeAllViews(); cats.removeAllViews()
         adapter.set(emptyList())
         val token = ++searchToken
+        showJump(q, token, auto = autoOpen)
         val sem = semantic
         val m = Match.valueOf(Prefs.s("match", "PHRASE"))
         val pre = Prefs.b("prefixes", true)
         exec.execute {
-            val r = if (sem) Search.runSemantic(this, q) else Search.run(q, m, pre)
+            val r = if (sem) Search.runSemantic(this, q) { t -> ui { if (token == searchToken) summary.text = t } } else Search.run(q, m, pre)
             val e = if (sem) "" else Search.buildMatch(r.terms, m, pre)
             ui {
                 if (token != searchToken) return@ui
@@ -372,6 +397,61 @@ class MainActivity : BaseActivity() {
                 render()
             }
         }
+    }
+
+    // ---------------- voice and direct jumps ----------------
+
+    private val questionWords = setOf("מה", "מהו", "מהי", "איך", "כיצד", "למה", "מדוע", "מתי", "מי", "האם", "היכן", "איפה", "מאיפה", "כמה")
+
+    private fun onVoice(text: String) {
+        input.setText(text)
+        input.setSelection(input.text.length)
+        val first = Heb.words(text).firstOrNull()
+        if (RefParser.parse(text) == null && first != null && first in questionWords && Semantic.ready(this) && !semantic) {
+            semantic = true; buildModes()
+        }
+        doSearch(autoOpen = true)
+    }
+
+    /** When the search is a reference (ברכות דף כז / ליקוטי שיחות חלק ג ויצא), offer to go straight there. */
+    private fun showJump(q: String, token: Int, auto: Boolean) {
+        jumpBar.visibility = View.GONE
+        val ref = try { RefParser.parse(q) } catch (e: Throwable) { null } ?: return
+        jumpBar.text = "⤶ מחפש את ${ref.label()}…"
+        jumpBar.visibility = View.VISIBLE
+        jumpBar.setOnClickListener(null)
+        exec.execute {
+            val targets = try { Jump.resolve(ref) } catch (e: Throwable) { emptyList() }
+            ui {
+                if (token != searchToken) return@ui
+                if (targets.isEmpty()) {
+                    jumpBar.text = "⤶ ${ref.label()}: לא נמצא ספר כזה במאגר" + if (Progress.running) " (הסריקה עדיין רצה)" else ""
+                    return@ui
+                }
+                jumpBar.text = if (targets.size == 1) "⤶ פתיחה: ${targets[0].book.title} – ${targets[0].note}"
+                else "⤶ ${ref.label()} – נמצא ב-${targets.size} ספרים. לבחירה ◂"
+                jumpBar.setOnClickListener { pickTarget(targets) }
+                if (auto) pickTarget(targets)
+            }
+        }
+    }
+
+    private fun pickTarget(targets: List<Jump.Target>) {
+        if (targets.size == 1) { openTarget(targets[0]); return }
+        Sheet.actions(this, "איזה ספר לפתוח? (${targets[0].ref.label()})", targets.map { t ->
+            val folder = Library.categoryOf(t.book.dir).joinToString(" › ")
+            "📖 ${t.book.title}
+$folder · ${t.note}" to { openTarget(t) }
+        })
+    }
+
+    private fun openTarget(t: Jump.Target) {
+        ReaderActivity.open(this, t.book.path, t.page, refLabel = t.ref.label(), amudIndex = t.amudIndex ?: -1, exact = t.exact)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == VoiceSearch.REQ_MIC) VoiceSearch.onPermission(this, grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED)
     }
 
     private fun visibleBooks(): List<BookHit> {
@@ -467,7 +547,7 @@ class MainActivity : BaseActivity() {
         val b = h.book
         Sheet.actions(this, b.title, listOf(
             "פתיחה בעמוד הראשון שנמצא" to { openHit(h, h.pages.firstOrNull()?.page ?: 1) },
-            "פתיחה באפליקציה אחרת" to { Library.openExternal(this, b.path, h.pages.firstOrNull()?.page ?: 1) },
+            "פתיחה באפליקציה אחרת" to { Library.openExternal(this, b.path, h.pages.firstOrNull()?.page ?: 1, results?.terms ?: emptyList(), chooser = true) },
             "חיפוש רק בתיקייה של הספר הזה" to { prefix = h.category; render() },
             "פרטי הספר" to {
                 Sheet.info(this, b.title, "תיקייה: ${b.dir}\nגודל: ${human(b.size)}\nעמודים: ${b.pages}\nעמודים עם טקסט: ${b.textPages}" +

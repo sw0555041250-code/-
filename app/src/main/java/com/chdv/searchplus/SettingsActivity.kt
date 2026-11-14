@@ -78,10 +78,44 @@ class SettingsActivity : BaseActivity() {
             else "ספרים ישנים סרוקים (תמונה בלי טקסט) – התוכנה תזהה את האותיות ותוכל לחפש בהם") { ocrMenu() }
         toggle("זיהוי אוטומטי של כל העמודים הסרוקים", "רץ ברקע אחרי קריאת הספרים. במכשיר חלש זה איטי (כמה שניות לעמוד)", "ocrAuto", true)
 
+        section("חיפוש קולי 🎤")
+        val eng = Prefs.s("voiceEngine", "auto")
+        val sysOk = VoiceSearch.systemAvailable(this)
+        item("מנוע זיהוי הדיבור", when (eng) {
+            "system" -> "שירות הדיבור של המכשיר (צריך אינטרנט)"
+            "whisper" -> "בתוך המכשיר – Whisper (בלי אינטרנט)"
+            else -> "אוטומטי: " + if (sysOk && !Prefs.b("systemFailed", false)) "שירות המכשיר, ואם הוא לא עובד – בתוך המכשיר" else "בתוך המכשיר (לא נמצא שירות דיבור במכשיר)"
+        }) {
+            Sheet.choice(this, "איך לזהות את הדיבור?", listOf(
+                "auto" to "אוטומטי (מומלץ)",
+                "whisper" to "תמיד בתוך המכשיר – Whisper, בלי אינטרנט",
+                "system" to "שירות הדיבור של המכשיר" + if (sysOk) "" else " (לא נמצא במכשיר הזה)",
+            ), eng) { Prefs.put("voiceEngine", it); Prefs.put("systemFailed", false); render() }
+        }
+        val wm = VoiceModels.spec()
+        val wReady = VoiceModels.ready(this)
+        item(if (wReady) "מודל הדיבור במכשיר: ${wm.title} ✓" else "הורדת מודל דיבור לעבודה בלי אינטרנט",
+            if (wReady) "נשמר ב: ${VoiceModels.dir(this, wm.key).parent}\nלחיצה להחלפה או למחיקה"
+            else "הורדה חד-פעמית (80–250MB). נשמר במכשיר או בכרטיס – איפה שיש יותר מקום") {
+            val items = ArrayList<Pair<String, () -> Unit>>()
+            VoiceModels.SPECS.forEach { sp ->
+                val have = VoiceModels.ready(this, sp.key)
+                items.add((if (sp.key == wm.key && have) "● " else "○ ") + "${sp.title} – כ-${sp.sizeMb}MB" + (if (have) " (מותקן)" else "") + "\n${sp.note}" to {
+                    Prefs.put("whisperModel", sp.key); VoiceModels.Engine.release()
+                    if (!have) VoiceSearch.downloadNow(this, sp.key) { render() } else render()
+                })
+            }
+            if (wReady) items.add("מחיקת מודל הדיבור (${wm.title})" to { VoiceModels.delete(this, wm.key); render() })
+            Sheet.actions(this, "מודל זיהוי הדיבור", items)
+        }
+        item("בדיקת החיפוש הקולי", "לחיצה, ודברו – תראו מה התוכנה שמעה") {
+            VoiceSearch.start(this) { t -> Sheet.info(this, "זה מה ששמעתי", t + (com.chdv.searchplus.core.RefParser.parse(t)?.let { "\n\nהבנתי: " + it.label() } ?: "")) }
+        }
+
         section("חיפוש לפי משמעות (בינה מלאכותית)")
         val semReady = Semantic.ready(this)
         item(if (semReady) "מודל המשמעות מותקן ✓" else "הורדת מודל המשמעות (כ-120MB)",
-            if (semReady) "וקטורים באינדקס: ${Semantic.vectorCount(this)} · לחיצה לניהול"
+            if (semReady) "וקטורים באינדקס: ${Semantic.vectorCount(this)} · לחיצה לניהול" + (Semantic.lastError.takeIf { it.isNotEmpty() }?.let { "\n⚠ $it" } ?: "")
             else "מאפשר לכתוב שאלה או רעיון ולמצוא את המקומות שעוסקים בהם. עובד בתוך המכשיר, בלי אינטרנט") { semanticMenu() }
         toggle("בניית אינדקס משמעות ברקע", "כבוי = החיפוש לפי משמעות מבוטל ולא נבנה אינדקס", "semantic", false) { on ->
             if (on && Semantic.ready(this)) Indexer.start(this)
@@ -96,12 +130,23 @@ class SettingsActivity : BaseActivity() {
 
         section("פתיחת ספרים ותצוגה")
         val ow = Prefs.s("openWith", "internal")
-        item("פתיחת תוצאה", if (ow == "internal") "בקורא המובנה – בעמוד הנכון עם סימון המילים" else "באפליקציה אחרת (קורא ברירת המחדל)") {
-            Sheet.choice(this, "איך לפתוח ספר?", listOf(
-                "internal" to "קורא מובנה – בעמוד המדויק עם סימון (מומלץ)",
-                "external" to "אפליקציה אחרת של המכשיר",
-            ), ow) { Prefs.put("openWith", it); render() }
+        val rp = Prefs.s("readerPkg", "")
+        item("באיזו אפליקציה לפתוח ספרים", if (ow == "internal") "הקורא המובנה – בעמוד הנכון עם סימון המילים"
+            else (if (rp.isEmpty()) "אפליקציה אחרת – תישאלו פעם אחת באיזו" else Library.appName(this, rp)) + " · נפתח בעמוד, והמילים מועתקות לחיפוש") {
+            val apps = Library.pdfApps(this)
+            val opts = ArrayList<Pair<String, String>>()
+            opts.add("internal" to "קורא מובנה – עמוד מדויק + סימון המילים (מומלץ)")
+            apps.forEach { r -> opts.add("app:${r.activityInfo.packageName}/${r.activityInfo.name}" to r.loadLabel(packageManager).toString()) }
+            val cur = if (ow == "internal") "internal" else "app:$rp/${Prefs.s("readerCls", "")}"
+            Sheet.choice(this, "ברירת מחדל לפתיחת ספרים", opts, cur) { k ->
+                if (k == "internal") Prefs.put("openWith", "internal") else {
+                    val (pkg, cls) = k.removePrefix("app:").split('/', limit = 2)
+                    Prefs.put("openWith", "external"); Prefs.put("readerPkg", pkg); Prefs.put("readerCls", cls)
+                }
+                render()
+            }
         }
+        if (ow == "external") toggle("העתקת מילות החיפוש בפתיחה", "כדי להדביק אותן בחיפוש של הקורא ולסמן אותן שם", "copyTerms", true)
         val fs = Prefs.s("fontSize", "normal")
         item("גודל הכתב", mapOf("small" to "קטן", "normal" to "רגיל", "large" to "גדול", "xlarge" to "גדול מאוד")[fs] ?: "רגיל") {
             Sheet.choice(this, "גודל הכתב", listOf("small" to "קטן", "normal" to "רגיל", "large" to "גדול", "xlarge" to "גדול מאוד"), fs) {
@@ -117,7 +162,7 @@ class SettingsActivity : BaseActivity() {
         item("בדיקת עדכונים עכשיו", "גרסה נוכחית: " + version()) { Updater.check(this, false) }
 
         section("אודות")
-        item("חיפוש פלוס", "גרסה ${version()}\nפותח על ידי שניאור וילהלם\nמופץ בחינם לתועלת הרבים\n\nקוד פתוח: github.com/chdv770-ctrl/Search-Plus", null)
+        item("חיפוש פלוס", "גרסה ${version()}\nפותח על ידי שניאור וילהלם\nמופץ בחינם לתועלת הרבים\n\nקוד פתוח: github.com/sw0555041250-code/-", null)
     }
 
     private fun version() = try { packageManager.getPackageInfo(packageName, 0).versionName ?: "" } catch (e: Exception) { "" }

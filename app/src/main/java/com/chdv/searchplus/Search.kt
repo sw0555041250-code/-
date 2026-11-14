@@ -104,10 +104,11 @@ object Search {
         return Results(q, terms, byBook.values.toList(), false, rows >= MAX_ROWS)
     }
 
-    fun runSemantic(c: Context, q: String): Results {
+    fun runSemantic(c: Context, q: String, progress: (String) -> Unit = {}): Results {
         val db = Db.get()
         val books = db.books()
-        val hits = try { Semantic.search(c, q) } catch (e: Throwable) {
+        val hits = try { Semantic.search(c, q, progress) } catch (e: Throwable) {
+            Semantic.lastError = e.message ?: e.javaClass.simpleName
             return Results(q, terms(q), emptyList(), true, false, "חיפוש לפי משמעות נכשל: " + (e.message ?: e.javaClass.simpleName))
         }
         val byBook = LinkedHashMap<Long, BookHit>()

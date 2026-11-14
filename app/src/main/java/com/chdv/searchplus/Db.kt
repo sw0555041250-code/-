@@ -210,6 +210,15 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "index.db", null,
         ).use { c -> return if (c.moveToFirst()) c.getString(0) else null }
     }
 
+    /** Text of every page of a book that has text: page number → text. */
+    fun pageTexts(fileId: Long): Map<Int, String> {
+        val m = HashMap<Int, String>()
+        readableDatabase.rawQuery("SELECT p.page, f.body FROM pages p JOIN fts f ON f.docid = p.id WHERE p.file=?", arrayOf(fileId.toString())).use { c ->
+            while (c.moveToNext()) m[c.getInt(0)] = c.getString(1)
+        }
+        return m
+    }
+
     fun pageTextById(pageId: Long): String? {
         readableDatabase.rawQuery("SELECT body FROM fts WHERE docid=?", arrayOf(pageId.toString())).use { c ->
             return if (c.moveToFirst()) c.getString(0) else null

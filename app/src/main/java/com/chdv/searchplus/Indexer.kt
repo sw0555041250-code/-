@@ -37,6 +37,10 @@ object Progress {
     @Volatile var lastFinished = 0L
     /** A single book the user asked to OCR now. */
     @Volatile var ocrFile: Long? = null
+    /** Set while the user is speaking / waiting for an answer, so the background work gives them the processor and memory. */
+    @Volatile var paused = false
+
+    fun waitWhilePaused() { var n = 0; while (paused && !cancel && n < 1200) { Thread.sleep(100); n++ } }
 
     fun text(): String = if (!running) "" else buildString {
         append(phase)
@@ -126,6 +130,7 @@ object Indexer {
         Progress.phase = "קורא ספרים"; Progress.total = pending.size; Progress.done = 0
         for ((id, path) in pending) {
             if (Progress.cancel) return
+            Progress.waitWhilePaused()
             Progress.current = File(path).name
             try {
                 val texts = extract(File(path))
@@ -139,12 +144,20 @@ object Indexer {
             Progress.done++
         }
 
-        // 3. OCR of scanned pages
+        // 3. meaning index (before OCR: OCR of a big library can take days, and must not hold this back)
+        if (Prefs.b("semantic", false) && Semantic.ready(c)) {
+            try { Semantic.indexPending(c) } catch (e: Throwable) { Semantic.lastError = e.message ?: e.javaClass.simpleName }
+        }
+        if (Progress.cancel) return
+
+        // 4. OCR of scanned pages
         if (Prefs.b("ocrAuto", true) && Ocr.ready(c)) Ocr.runPending(c, null)
         if (Progress.cancel) return
 
-        // 4. meaning index
-        if (Prefs.b("semantic", false) && Semantic.ready(c)) Semantic.indexPending(c)
+        // 5. pages that OCR just made readable also go into the meaning index
+        if (Prefs.b("semantic", false) && Semantic.ready(c)) {
+            try { Semantic.indexPending(c) } catch (e: Throwable) { Semantic.lastError = e.message ?: e.javaClass.simpleName }
+        }
     }
 
     /** Re-read one book now (from the book menu). */
@@ -198,6 +211,7 @@ object Ocr {
                 try {
                     for ((pageId, fileId, page) in batch) {
                         if (Progress.cancel) break
+                        Progress.waitWhilePaused()
                         val b = db.book(fileId)
                         if (b == null) { db.saveOcr(pageId, fileId, null); continue }
                         Progress.current = "${b.title} – עמוד $page"

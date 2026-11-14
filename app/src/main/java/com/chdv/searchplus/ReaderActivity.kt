@@ -36,16 +36,18 @@ import java.util.concurrent.Executors
 class ReaderActivity : BaseActivity() {
 
     companion object {
-        fun open(c: Context, path: String, page: Int, terms: List<String> = emptyList(), hits: IntArray? = null) {
+        fun open(c: Context, path: String, page: Int, terms: List<String> = emptyList(), hits: IntArray? = null,
+                 refLabel: String? = null, amudIndex: Int = -1, exact: Boolean = true) {
             if (Prefs.s("openWith", "internal") == "external" && c is android.app.Activity) {
                 Library.addRecent(path, page)
-                Library.openExternal(c, path, page)
+                Library.openExternal(c, path, page, terms, chooser = false)
                 return
             }
             c.startActivity(Intent(c, ReaderActivity::class.java)
                 .putExtra("path", path).putExtra("page", page)
                 .putExtra("terms", terms.toTypedArray())
-                .putExtra("hits", hits))
+                .putExtra("hits", hits)
+                .putExtra("refLabel", refLabel).putExtra("amudIndex", amudIndex).putExtra("exact", exact))
         }
     }
 
@@ -105,6 +107,24 @@ class ReaderActivity : BaseActivity() {
         head.addView(headerButton("⋯") { menu() })
         root.addView(head, lp(MATCH, WRAP))
         root.addView(divider())
+
+        // opened from a reference (ברכות דף כז): let the user confirm or correct the place, and remember it
+        val refLabel = intent.getStringExtra("refLabel")
+        val amudIndex = intent.getIntExtra("amudIndex", -1)
+        if (refLabel != null) {
+            val rb = hbox().apply { setPadding(dp(12), dp(6), dp(8), dp(6)); setBackgroundColor(Col.ACC_LIGHT) }
+            rb.addView(label("⤶ " + refLabel + if (!intent.getBooleanExtra("exact", true)) " · משוער" else "", 14.5f, Col.ACC, true), lp(0, WRAP, 1f))
+            if (amudIndex >= 0) rb.addView(headerButton("✓ זה המקום") {
+                path?.let { Jump.calibrate(it, page, amudIndex) }
+                toast("נשמר – בפעם הבאה ייפתח כאן")
+                rb.visibility = View.GONE
+            })
+            rb.addView(headerButton("✕") { rb.visibility = View.GONE })
+            root.addView(rb, lp(MATCH, WRAP))
+            if (amudIndex >= 0) root.addView(label("לא הגעתם בדיוק? דפדפו לדף הנכון ולחצו \"✓ זה המקום\" – התוכנה תלמד את הספר", 12.5f, Col.SUB).apply {
+                setPadding(dp(12), dp(2), dp(12), dp(4)); id = 77
+            }, lp(MATCH, WRAP))
+        }
 
         val frame = FrameLayout(this)
         view = PageView(this)
@@ -282,7 +302,7 @@ class ReaderActivity : BaseActivity() {
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 safeStart(Intent.createChooser(i, "שיתוף"))
             })
-            items.add("פתיחה באפליקציה אחרת" to { Library.openExternal(this, p, page) })
+            items.add("פתיחה באפליקציה אחרת" to { Library.openExternal(this, p, page, terms, chooser = true) })
         }
         items.add(if (view.zoomed()) "חזרה לגודל מלא" to { view.reset() } else "הגדלה ×2" to { view.zoomTo(2f) })
         Sheet.actions(this, "עמוד $page", items)

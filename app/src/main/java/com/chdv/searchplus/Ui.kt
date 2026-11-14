@@ -35,6 +35,28 @@ class App : Application() {
         super.onCreate()
         ctx = this
         Prefs.init(this)
+        // if the app ever closes because of an error, keep the details and show them next time
+        val prev = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            try {
+                val sw = java.io.StringWriter(); e.printStackTrace(java.io.PrintWriter(sw))
+                java.io.File(filesDir, "crash.txt").writeText("${java.util.Date()}  thread=${t.name}\n$sw".take(8000))
+            } catch (x: Throwable) {}
+            // a crash in a background thread (scan, AI) must not close the app
+            if (t !== android.os.Looper.getMainLooper().thread) {
+                Progress.running = false
+                return@setDefaultUncaughtExceptionHandler
+            }
+            prev?.uncaughtException(t, e)
+        }
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        // the system is short of memory: free the AI models (they load again when needed)
+        if (level >= TRIM_MEMORY_RUNNING_LOW) {
+            Thread { try { Semantic.close() } catch (e: Throwable) {}; try { if (!Progress.paused) VoiceModels.Engine.release() } catch (e: Throwable) {} }.start()
+        }
     }
 
     companion object {

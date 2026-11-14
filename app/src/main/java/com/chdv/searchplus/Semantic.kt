@@ -1,10 +1,9 @@
 package com.chdv.searchplus
 
-import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
-import ai.onnxruntime.OrtSession
 import android.content.Context
-import android.util.JsonReader
+import com.chdv.searchplus.core.E5Model
+import com.chdv.searchplus.core.E5Tokenizer
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.DataInputStream
@@ -12,20 +11,20 @@ import java.io.DataOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.io.InputStreamReader
-import java.nio.LongBuffer
-import java.text.Normalizer
 import java.util.PriorityQueue
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
-import kotlin.math.sqrt
 
 /**
  * Search by meaning. Uses the multilingual-e5-small model (it understands Hebrew) running on the
  * device with ONNX Runtime. Every page is cut into passages; every passage gets a vector of 384
  * numbers that represents its meaning. A question is turned into a vector the same way and the
  * passages with the closest meaning are returned. Nothing leaves the device.
+ *
+ * Two sources are combined: the prepared index (vectors.bin, built in the background) and, at
+ * question time, the pages that contain the question's words, read and compared on the spot – so
+ * meaning search gives answers even before the index is complete.
  */
 object Semantic {
     private const val BASE = "https://huggingface.co/Xenova/multilingual-e5-small/resolve/main/"
@@ -40,14 +39,27 @@ object Semantic {
     private fun vocabFile(c: Context) = File(dir(c), "vocab.bin")
     fun vectorsFile(c: Context) = File(c.filesDir, "vectors.bin")
 
-    fun ready(c: Context) = modelFile(c).length() > 50_000_000 && (vocabFile(c).exists() || tokFile(c).length() > 1_000_000)
+    fun ready(c: Context) = modelFile(c).length() > 50_000_000 && vocabFile(c).length() > 1_000_000
+
+    /** Last problem, shown in the settings (so a failure is never silent). */
+    var lastError: String
+        get() = Prefs.s("semError", "")
+        set(v) = Prefs.put("semError", v.take(400))
 
     fun download(c: Context, progress: (String) -> Unit) {
         dir(c).mkdirs()
-        Net.download(BASE + "tokenizer.json", tokFile(c)) { progress("מוריד מילון… $it%") }
-        Net.download(BASE + "onnx/model_quantized.onnx", modelFile(c)) { progress("מוריד את מודל הבינה… $it%") }
-        progress("מכין את המילון…")
-        buildVocab(c)
+        if (vocabFile(c).length() < 1_000_000) {
+            Net.download(BASE + "tokenizer.json", tokFile(c)) { progress("מוריד מילון… $it%") }
+            progress("מכין את המילון…")
+            E5Tokenizer.compile(tokFile(c), vocabFile(c))
+            tokFile(c).delete()
+        }
+        if (modelFile(c).length() < 50_000_000) Net.download(BASE + "onnx/model_quantized.onnx", modelFile(c)) { progress("מוריד את מודל הבינה… $it%") }
+        progress("בודק את המודל…")
+        // a real test run: if this works, search by meaning works
+        val v = embed(c, "query: בדיקה")
+        if (v.size != DIM) throw IllegalStateException("המודל החזיר ${v.size} מספרים במקום $DIM")
+        lastError = ""
     }
 
     fun deleteAll(c: Context) {
@@ -57,176 +69,29 @@ object Semantic {
         Db.get().resetEmbeddings()
     }
 
-    // ---------- tokenizer (SentencePiece Unigram, as in XLM-RoBERTa) ----------
-
-    private var vocab: HashMap<String, Int>? = null
-    private var scores: FloatArray = FloatArray(0)
-    private var maxPiece = 16
-    private var unkId = 3
-    private var bosId = 0
-    private var eosId = 2
-    private var unkScore = -20f
-
-    /** Read the vocabulary out of tokenizer.json (17MB) once, and keep a compact copy. */
-    private fun buildVocab(c: Context) {
-        val pieces = ArrayList<String>(260_000)
-        val sc = ArrayList<Float>(260_000)
-        var unk = 3
-        JsonReader(InputStreamReader(BufferedInputStream(FileInputStream(tokFile(c)), 1 shl 16), Charsets.UTF_8)).use { r ->
-            r.beginObject()
-            while (r.hasNext()) {
-                if (r.nextName() != "model") { r.skipValue(); continue }
-                r.beginObject()
-                while (r.hasNext()) {
-                    when (r.nextName()) {
-                        "unk_id" -> unk = r.nextInt()
-                        "vocab" -> {
-                            r.beginArray()
-                            while (r.hasNext()) {
-                                r.beginArray()
-                                pieces.add(r.nextString())
-                                sc.add(r.nextDouble().toFloat())
-                                while (r.hasNext()) r.skipValue()
-                                r.endArray()
-                            }
-                            r.endArray()
-                        }
-                        else -> r.skipValue()
-                    }
-                }
-                r.endObject()
-            }
-            r.endObject()
-        }
-        DataOutputStream(BufferedOutputStream(FileOutputStream(vocabFile(c)), 1 shl 16)).use { o ->
-            o.writeInt(pieces.size); o.writeInt(unk)
-            for (i in pieces.indices) { o.writeUTF(pieces[i]); o.writeFloat(sc[i]) }
-        }
-        tokFile(c).delete()
-    }
-
-    private fun loadVocab(c: Context) {
-        if (vocab != null) return
-        if (!vocabFile(c).exists()) buildVocab(c)
-        DataInputStream(BufferedInputStream(FileInputStream(vocabFile(c)), 1 shl 16)).use { i ->
-            val n = i.readInt()
-            unkId = i.readInt()
-            val m = HashMap<String, Int>(n * 2)
-            val s = FloatArray(n)
-            var mx = 1
-            var minScore = 0f
-            for (k in 0 until n) {
-                val p = i.readUTF()
-                s[k] = i.readFloat()
-                m[p] = k
-                if (p.length > mx) mx = p.length
-                if (s[k] < minScore) minScore = s[k]
-            }
-            vocab = m; scores = s; maxPiece = min(mx, 24)
-            unkScore = minScore - 10f
-            bosId = m["<s>"] ?: 0
-            eosId = m["</s>"] ?: 2
-        }
-    }
-
-    private fun tokenize(text: String, maxLen: Int): LongArray {
-        val v = vocab!!
-        val norm = Normalizer.normalize(text, Normalizer.Form.NFKC).replace(Regex("\\s+"), " ").trim()
-        val ids = ArrayList<Int>()
-        ids.add(bosId)
-        for (word in norm.split(' ')) {
-            if (word.isEmpty()) continue
-            val w = "▁$word"
-            val n = w.length
-            val best = FloatArray(n + 1) { Float.NEGATIVE_INFINITY }
-            val from = IntArray(n + 1)
-            val tok = IntArray(n + 1)
-            best[0] = 0f
-            for (i in 0 until n) {
-                if (best[i] == Float.NEGATIVE_INFINITY) continue
-                var single = false
-                val lim = min(maxPiece, n - i)
-                for (len in 1..lim) {
-                    val id = v[w.substring(i, i + len)] ?: continue
-                    if (len == 1) single = true
-                    val s = best[i] + scores[id]
-                    if (s > best[i + len]) { best[i + len] = s; from[i + len] = i; tok[i + len] = id }
-                }
-                if (!single) {
-                    val s = best[i] + unkScore
-                    if (s > best[i + 1]) { best[i + 1] = s; from[i + 1] = i; tok[i + 1] = unkId }
-                }
-            }
-            val wordIds = ArrayList<Int>()
-            var k = n
-            while (k > 0) { wordIds.add(tok[k]); k = from[k] }
-            for (j in wordIds.indices.reversed()) {
-                val id = wordIds[j]
-                if (id == unkId && ids.isNotEmpty() && ids.last() == unkId) continue
-                ids.add(id)
-            }
-            if (ids.size >= maxLen - 1) break
-        }
-        while (ids.size > maxLen - 1) ids.removeAt(ids.size - 1)
-        ids.add(eosId)
-        return LongArray(ids.size) { ids[it].toLong() }
-    }
-
     // ---------- model ----------
 
-    private var env: OrtEnvironment? = null
-    private var session: OrtSession? = null
+    private var model: E5Model? = null
 
     @Synchronized
-    private fun open(c: Context) {
-        if (session != null) return
-        loadVocab(c)
-        val e = OrtEnvironment.getEnvironment()
-        val opts = OrtSession.SessionOptions()
-        opts.setIntraOpNumThreads(max(1, min(4, Runtime.getRuntime().availableProcessors())))
-        opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
-        env = e
-        session = e.createSession(modelFile(c).absolutePath, opts)
+    private fun open(c: Context): E5Model {
+        model?.let { return it }
+        if (!vocabFile(c).exists() && tokFile(c).exists()) E5Tokenizer.compile(tokFile(c), vocabFile(c))
+        val tok = E5Tokenizer.load(vocabFile(c))
+        val threads = max(1, min(4, Runtime.getRuntime().availableProcessors()))
+        return E5Model(OrtEnvironment.getEnvironment(), modelFile(c).absolutePath, tok, threads).also { model = it }
     }
 
     @Synchronized
     fun close() {
-        try { session?.close() } catch (e: Exception) {}
-        session = null
-        vocab = null
+        try { model?.close() } catch (e: Exception) {}
+        model = null
     }
 
     @Synchronized
-    fun embed(c: Context, text: String, maxLen: Int = 192): FloatArray {
-        open(c)
-        val s = session!!
-        val e = env!!
-        val ids = tokenize(text, maxLen)
-        val n = ids.size
-        val shape = longArrayOf(1, n.toLong())
-        val tensors = ArrayList<OnnxTensor>()
-        try {
-            val inputs = HashMap<String, OnnxTensor>()
-            OnnxTensor.createTensor(e, LongBuffer.wrap(ids), shape).also { tensors.add(it); inputs["input_ids"] = it }
-            OnnxTensor.createTensor(e, LongBuffer.wrap(LongArray(n) { 1L }), shape).also { tensors.add(it); inputs["attention_mask"] = it }
-            if (s.inputNames.contains("token_type_ids")) {
-                OnnxTensor.createTensor(e, LongBuffer.wrap(LongArray(n)), shape).also { tensors.add(it); inputs["token_type_ids"] = it }
-            }
-            s.run(inputs).use { r ->
-                @Suppress("UNCHECKED_CAST")
-                val out = (r.get(0).value as Array<Array<FloatArray>>)[0]
-                val v = FloatArray(DIM)
-                for (row in out) for (d in 0 until DIM) v[d] += row[d]
-                var norm = 0f
-                for (d in 0 until DIM) { v[d] /= out.size; norm += v[d] * v[d] }
-                norm = sqrt(norm).coerceAtLeast(1e-9f)
-                for (d in 0 until DIM) v[d] /= norm
-                return v
-            }
-        } finally {
-            tensors.forEach { it.close() }
-        }
-    }
+    fun embed(c: Context, text: String, maxLen: Int = 192): FloatArray = open(c).embed(text, maxLen)
+
+    private fun dot(a: FloatArray, b: FloatArray): Float { var d = 0f; for (i in a.indices) d += a[i] * b[i]; return d }
 
     // ---------- passages ----------
 
@@ -254,26 +119,43 @@ object Semantic {
         Progress.phase = "בונה אינדקס לפי משמעות"
         Progress.total = books.size; Progress.done = 0
         try {
+            open(c)
+        } catch (e: Throwable) {
+            lastError = "המודל לא נטען: " + (e.message ?: e.javaClass.simpleName)
+            return
+        }
+        try {
             DataOutputStream(BufferedOutputStream(FileOutputStream(vectorsFile(c), true), 1 shl 16)).use { out ->
                 for (b in books) {
                     if (Progress.cancel) return
+                    Progress.waitWhilePaused()
                     Progress.current = b.title
-                    val pages = db.pagesOf(b.id)
-                    for ((pageId, body) in pages) {
-                        if (Progress.cancel) return
-                        for (ch in chunks(body)) {
-                            val v = embed(c, "passage: $ch")
-                            var mx = 0f
-                            for (x in v) mx = max(mx, kotlin.math.abs(x))
-                            val sc = if (mx == 0f) 1f else mx / 127f
-                            out.writeInt(pageId.toInt())
-                            out.writeFloat(sc)
-                            val bytes = ByteArray(DIM) { (v[it] / sc).roundToInt().coerceIn(-127, 127).toByte() }
-                            out.write(bytes)
+                    try {
+                        val recs = ArrayList<Pair<Int, ByteArray>>()
+                        val scales = ArrayList<Float>()
+                        for ((pageId, body) in db.pagesOf(b.id)) {
+                            if (Progress.cancel) return
+                            Progress.waitWhilePaused()
+                            for (ch in chunks(body)) {
+                                val v = embed(c, "passage: $ch")
+                                var mx = 0f
+                                for (x in v) mx = max(mx, kotlin.math.abs(x))
+                                val sc = if (mx == 0f) 1f else mx / 127f
+                                recs.add(pageId.toInt() to ByteArray(DIM) { (v[it] / sc).roundToInt().coerceIn(-127, 127).toByte() })
+                                scales.add(sc)
+                            }
                         }
+                        // the whole book is written at once, so a stop in the middle never leaves half a book
+                        for (k in recs.indices) { out.writeInt(recs[k].first); out.writeFloat(scales[k]); out.write(recs[k].second) }
+                        out.flush()
+                        db.markEmbedded(b.id)
+                    } catch (e: OutOfMemoryError) {
+                        System.gc(); db.markEmbedded(b.id, 2)
+                        lastError = "הספר ${b.title} גדול מדי לזיכרון – דילגתי עליו"
+                    } catch (e: Throwable) {
+                        db.markEmbedded(b.id, 2)
+                        lastError = "${b.title}: " + (e.message ?: e.javaClass.simpleName)
                     }
-                    out.flush()
-                    db.markEmbedded(b.id)
                     Progress.done++
                 }
             }
@@ -284,11 +166,10 @@ object Semantic {
 
     data class Hit(val pageId: Long, val score: Float)
 
-    /** The pages whose meaning is closest to the question. */
-    fun search(c: Context, query: String, k: Int = 400): List<Hit> {
+    /** The pages whose meaning is closest to the question, from the prepared index. */
+    fun searchIndex(c: Context, q: FloatArray, k: Int = 300): List<Hit> {
         val f = vectorsFile(c)
         if (!f.exists() || f.length() < REC) return emptyList()
-        val q = embed(c, "query: $query", 96)
         val best = HashMap<Int, Float>() // best score per page
         val heap = PriorityQueue<Pair<Int, Float>>(k + 1, compareBy { it.second })
         val buf = ByteArray(DIM)
@@ -298,50 +179,91 @@ object Semantic {
                 val pid = i.readInt()
                 val sc = i.readFloat()
                 i.readFully(buf)
-                var dot = 0f
-                for (d in 0 until DIM) dot += q[d] * buf[d]
-                dot *= sc
+                var d = 0f
+                for (x in 0 until DIM) d += q[x] * buf[x]
+                d *= sc
                 val prev = best[pid]
-                if (prev != null && prev >= dot) continue
-                if (heap.size >= k && dot <= heap.peek()!!.second) continue
-                best[pid] = dot
-                heap.add(pid to dot)
+                if (prev != null && prev >= d) continue
+                if (heap.size >= k && d <= heap.peek()!!.second) continue
+                best[pid] = d
+                heap.add(pid to d)
                 if (heap.size > k) heap.poll()
             }
         }
-        // the heap can contain the same page twice; keep its best score
         val m = HashMap<Int, Float>()
         heap.forEach { (p, s) -> if ((m[p] ?: -9f) < s) m[p] = s }
         return m.entries.sortedByDescending { it.value }.map { Hit(it.key.toLong(), it.value) }
+    }
+
+    /** Small words that say nothing about the subject of a question. */
+    private val STOP = setOf("מה", "מהו", "מהי", "איך", "כיצד", "למה", "מדוע", "מתי", "מי", "האם", "איפה", "היכן", "של", "על", "את", "אל",
+        "עם", "הוא", "היא", "הם", "זה", "זו", "זאת", "אם", "כי", "יש", "אין", "לא", "כל", "גם", "או", "אבל", "רק", "כמו", "אחרי", "לפני",
+        "צריך", "צריכים", "אפשר", "מותר", "אסור", "דין", "הדין", "לגבי", "בענין", "בעניין", "אומרים", "אומר", "כתוב", "נאמר", "עושים")
+
+    fun keyWords(q: String): List<String> = Heb.words(q).filter { it.length >= 2 && it !in STOP }
+
+    /**
+     * Meaning search = prepared index + on-the-spot reading of the pages that contain the question's
+     * words. [progress] reports what is happening (it can take a few seconds on an E-ink device).
+     */
+    fun search(c: Context, query: String, progress: (String) -> Unit = {}): List<Hit> {
+        val q = embed(c, "query: $query", 96)
+        val scores = HashMap<Long, Float>()
+        searchIndex(c, q).forEach { scores[it.pageId] = it.score }
+
+        // pages with the most question words, compared now
+        val kw = keyWords(query)
+        if (kw.isNotEmpty()) {
+            progress("קורא את העמודים שמזכירים את המילים…")
+            val expr = Search.buildMatch(kw, Match.ANY, true)
+            val cand = ArrayList<Pair<Long, Int>>()
+            try {
+                Db.get().readableDatabase.rawQuery("SELECT docid, body FROM fts WHERE fts MATCH ? LIMIT 400", arrayOf(expr)).use { cur ->
+                    while (cur.moveToNext()) {
+                        val body = cur.getString(1)
+                        val n = kw.count { w -> body.contains(w) }
+                        cand.add(cur.getLong(0) to n)
+                    }
+                }
+            } catch (e: Exception) {}
+            val top = cand.sortedByDescending { it.second }.take(16).filter { it.first !in scores }
+            top.forEachIndexed { i, (pid, _) ->
+                progress("משווה משמעות ${i + 1}/${top.size}…")
+                val body = Db.get().pageTextById(pid) ?: return@forEachIndexed
+                val chunk = chunks(body).maxByOrNull { ch -> kw.count { ch.contains(it) } } ?: return@forEachIndexed
+                scores[pid] = dot(q, embed(c, "passage: $chunk"))
+            }
+        }
+        return scores.entries.sortedByDescending { it.value }.take(300).map { Hit(it.key, it.value) }
     }
 
     fun vectorCount(c: Context): Long = vectorsFile(c).length() / REC
 
     class Answer(val text: String, val pageId: Long, val score: Float)
 
-    /** Extractive answer: the single sentence (from the closest pages) whose meaning is closest to the question. */
+    /** Extractive answer: the sentence (from the closest pages) whose meaning is closest to the question. */
     fun answer(c: Context, question: String, pageIds: List<Long>): Answer? {
         if (pageIds.isEmpty()) return null
         val q = embed(c, "query: $question", 96)
-        var best: Answer? = null
+        val kw = keyWords(question)
         val db = Db.get()
+        val sents = ArrayList<Pair<String, Long>>()
         for (pid in pageIds) {
             val body = db.pageTextById(pid) ?: continue
-            // sentences, or ~30-word pieces where the text has no punctuation
-            val sents = ArrayList<String>()
             for (part in body.replace('\n', ' ').split(Regex("(?<=[.:;?!])\\s+"))) {
                 val ws = part.split(' ').filter { it.isNotBlank() }
                 if (ws.size < 5) continue
                 var i = 0
-                while (i < ws.size) { sents.add(ws.subList(i, minOf(ws.size, i + 35)).joinToString(" ")); i += 30 }
-            }
-            for (sn in sents.take(40)) {
-                val v = embed(c, "passage: $sn", 80)
-                var dot = 0f
-                for (d in 0 until DIM) dot += q[d] * v[d]
-                if (best == null || dot > best.score) best = Answer(sn, pid, dot)
+                while (i < ws.size) { sents.add(ws.subList(i, minOf(ws.size, i + 35)).joinToString(" ") to pid); i += 30 }
             }
         }
-        return best?.takeIf { it.score > 0.78f }
+        // compare only the sentences most likely to answer (each comparison costs time on the device)
+        val pick = sents.sortedByDescending { (s, _) -> kw.count { s.contains(it) } }.take(20)
+        var best: Answer? = null
+        for ((sn, pid) in pick) {
+            val d = dot(q, embed(c, "passage: $sn", 80))
+            if (best == null || d > best.score) best = Answer(sn, pid, d)
+        }
+        return best?.takeIf { it.score > 0.8f }
     }
 }

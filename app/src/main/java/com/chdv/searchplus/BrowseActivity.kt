@@ -72,7 +72,7 @@ class BrowseActivity : BaseActivity() {
         val b = Db.get().bookByPath(f.absolutePath)
         val items = ArrayList<Pair<String, () -> Unit>>()
         items.add("פתיחה" to { ReaderActivity.open(this, f.absolutePath, 0) })
-        items.add("פתיחה באפליקציה אחרת" to { Library.openExternal(this, f.absolutePath, 1) })
+        items.add("פתיחה באפליקציה אחרת" to { Library.openExternal(this, f.absolutePath, 1, chooser = true) })
         if (b != null) {
             items.add("קריאה מחדש של הספר (סריקה)" to { Indexer.reindex(this, b); toast("הספר נכנס לתור הסריקה") })
             if (b.emptyPages > 0) items.add("זיהוי טקסט (OCR) ל-${b.emptyPages} העמודים הסרוקים" to {

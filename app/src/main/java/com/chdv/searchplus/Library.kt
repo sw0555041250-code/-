@@ -95,17 +95,58 @@ object Library {
 
     fun uriFor(c: Context, f: File): Uri = FileProvider.getUriForFile(c, c.packageName + ".files", f)
 
-    /** Open a PDF in another app (the device's default reader). */
-    fun openExternal(a: Activity, path: String, page: Int) {
+    /** Apps on the device that can open a PDF. */
+    fun pdfApps(c: Context): List<android.content.pm.ResolveInfo> {
+        val i = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse("content://x/y.pdf"), "application/pdf")
+        return c.packageManager.queryIntentActivities(i, 0).filter { it.activityInfo.packageName != c.packageName }
+            .sortedBy { it.loadLabel(c.packageManager).toString() }
+    }
+
+    fun appName(c: Context, pkg: String): String = try {
+        c.packageManager.getApplicationLabel(c.packageManager.getApplicationInfo(pkg, 0)).toString()
+    } catch (e: Exception) { pkg }
+
+    /**
+     * Open a PDF in another app. With a default reader chosen in the settings it opens there directly
+     * (no "open with" question). The page number is sent in the ways readers know; the searched words
+     * are copied, so they can be pasted into the reader's own search to mark them.
+     */
+    fun openExternal(a: Activity, path: String, page: Int, terms: List<String> = emptyList(), chooser: Boolean = false) {
         val f = File(path)
+        val uri = uriFor(a, f)
         val i = Intent(Intent.ACTION_VIEW)
-            .setDataAndType(uriFor(a, f), "application/pdf")
+            .setDataAndType(uri, "application/pdf")
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            .putExtra("page", page)
-            .putExtra("PAGE", page)
-            .putExtra("pageNumber", page)
-        val chooser = Intent.createChooser(i, "פתיחה באמצעות")
-        if (!a.safeStart(chooser)) a.toast("לא נמצאה אפליקציה לפתיחת PDF")
+            .putExtra("page", page).putExtra("PAGE", page).putExtra("pageNumber", page).putExtra("page_number", page)
+            .putExtra("pageIndex", page - 1).putExtra("start_page", page).putExtra("android.intent.extra.PAGE", page)
+            .putExtra("com.onyx.intent.extra.PAGE", page - 1)
+        if (terms.isNotEmpty() && Prefs.b("copyTerms", true)) {
+            val words = terms.joinToString(" ") { it.removeSuffix("*") }
+            (a.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                .setPrimaryClip(android.content.ClipData.newPlainText("search", words))
+            a.toast("עמוד $page · המילים \"$words\" הועתקו – אפשר להדביק בחיפוש של הקורא")
+        }
+        val pkg = Prefs.s("readerPkg", ""); val cls = Prefs.s("readerCls", "")
+        if (!chooser && pkg.isNotEmpty()) {
+            val direct = Intent(i).setClassName(pkg, cls)
+            a.grantUriPermission(pkg, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (a.safeStart(direct)) return
+            // the chosen app was removed: ask again
+            Prefs.put("readerPkg", ""); Prefs.put("readerCls", "")
+        }
+        val apps = pdfApps(a)
+        if (apps.isEmpty()) { a.toast("לא נמצאה אפליקציה לפתיחת PDF"); return }
+        val pm = a.packageManager
+        Sheet.actions(a, "פתיחה באמצעות", apps.map { r ->
+            r.loadLabel(pm).toString() to {
+                if (!chooser) {
+                    Prefs.put("readerPkg", r.activityInfo.packageName); Prefs.put("readerCls", r.activityInfo.name)
+                    a.toast("מעכשיו ספרים ייפתחו ב-${r.loadLabel(pm)}. אפשר לשנות בהגדרות")
+                }
+                a.grantUriPermission(r.activityInfo.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                if (!a.safeStart(Intent(i).setClassName(r.activityInfo.packageName, r.activityInfo.name))) a.toast("לא ניתן לפתוח")
+            }
+        })
     }
 
     // ---------- favourites, history, recent books ----------

@@ -219,9 +219,10 @@ object RefParser {
     fun normalize(s: String): String {
         var t = s.replace(Regex("[\\u0591-\\u05C7]"), "") // nikud & teamim
         t = t.replace('״', '"').replace('׳', '\'').replace('“', '"').replace('”', '"').replace('’', '\'').replace('`', '\'')
+        t = t.replace(Regex("(?<=[א-ת])['\"](?=[.:?!]?(\\s|$))"), "") // ה׳. → ה.
         // amud marks: "כז." = amud a, "כז:" = amud b → keep as words
         t = t.replace(Regex("(?<=[א-ת\\d])\\.(?=\\s|$)"), " ע\"א ").replace(Regex("(?<=[א-ת\\d]):(?=\\s|$)"), " ע\"ב ")
-        t = t.replace(Regex("[,;!?()\\[\\]{}–—\\-/]"), " ")
+        t = t.replace(Regex("[,;!?()\\[\\]{}–—\\-/]"), " ").replace(Regex("[.:](?=\\s|$)"), " ")
         t = t.replace("\"", "").replace("'", "")
         return t.replace(Regex("\\s+"), " ").trim()
     }
@@ -267,6 +268,21 @@ object RefParser {
             }
         }
 
+        // speech recognition often spells a masechet name wrongly ("בבה מיציה"): compare without the vowel letters
+        if (work == null && (tokens.contains("דף") || tokens.any { it in GEMARA_WORDS })) {
+            fun key(w: String) = w.filter { it !in "אהעיו" }.replace('ך', 'כ').replace('ם', 'מ').replace('ן', 'נ').replace('ף', 'פ').replace('ץ', 'צ')
+            loop@ for (name in MASECHTOT.sortedByDescending { it.length }) {
+                val ws = name.split(' ')
+                val nk = ws.map(::key)
+                if (nk.any { it.length < 2 }) continue
+                for (k in 0..tokens.size - ws.size) {
+                    if ((0 until ws.size).all { key(tokens[k + it]) == nk[it] && tokens[k + it] != "דף" }) {
+                        kind = Ref.Kind.GEMARA; work = name; repeat(ws.size) { used.add(k + it) }; break@loop
+                    }
+                }
+            }
+        }
+
         // ---- numbers by their keyword ----
         var volume: Int? = null; var daf: Int? = null; var amud: Int? = null; var chapter: Int? = null
         var siman: Int? = null; var sicha: Int? = null; var page: Int? = null
@@ -292,7 +308,7 @@ object RefParser {
                     if ((daf != null || kind == Ref.Kind.GEMARA) && ab != null) { amud = ab; used.add(i); used.add(i + 1); i++ }
                     else num()?.let { if (daf != null && it in 1..2) amud = it else page = it }
                 }
-                "עא", "עב" -> { amud = if (t == "עא") 1 else 2; used.add(i) }
+                "עא", "עב" -> { if (kind == Ref.Kind.GEMARA) amud = if (t == "עא") 1 else 2; used.add(i) }
             }
             i++
         }
