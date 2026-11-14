@@ -44,7 +44,7 @@ class ReaderActivity : BaseActivity() {
             }
             if (Prefs.s("openWith", "internal") == "external" && c is android.app.Activity) {
                 Library.addRecent(path, page)
-                Library.openExternal(c, path, page, terms, chooser = false)
+                Library.openExternal(c, path, page, terms, chooser = false, phrase = phrase)
                 return
             }
             c.startActivity(Intent(c, ReaderActivity::class.java)
@@ -208,7 +208,7 @@ class ReaderActivity : BaseActivity() {
             val pageW = rendered.second
             ui { if (token == renderToken) view.setPage(bmp, emptyList()) else bmp.recycle() }
             if ((terms.isNotEmpty() || phrase != null) && path != null) {
-                val rects = try { highlights(p, bmp.width / pageW) } catch (e: Throwable) { emptyList() }
+                val rects = try { highlights(p, bmp.width / pageW, bmp.width) } catch (e: Throwable) { emptyList() }
                 ui { if (token == renderToken && rects.isNotEmpty()) view.setHighlights(rects) }
             }
         }
@@ -220,7 +220,7 @@ class ReaderActivity : BaseActivity() {
      * words that best matches it is marked as one passage; otherwise every word that contains a
      * searched word.
      */
-    private fun highlights(p: Int, scale: Float): List<RectF> {
+    private fun highlights(p: Int, scale: Float, bmpW: Int = 0): List<RectF> {
         val d = doc ?: Indexer.loadDoc(File(path!!)).also { doc = it }
         val plain = PDFTextStripper().apply { startPage = p; endPage = p }
         val raw = plain.getText(d)
@@ -256,6 +256,12 @@ class ReaderActivity : BaseActivity() {
         st.sortByPosition = Prefs.b("sortByPosition", false)
         st.startPage = p; st.endPage = p
         st.getText(d)
+        // an old scanned page has no text layer: find the words on the image itself (OCR)
+        if (words.size < 5 && bmpW > 0) {
+            ui { toast("מחפש את המילים בעמוד הסרוק…") }
+            words.clear()
+            words.addAll(Ocr.wordBoxes(this, path!!, p - 1, bmpW))
+        }
 
         val ph = phrase?.takeIf { p == phrasePage }?.let { Heb.words(it).filter { w -> w.length > 1 } } ?: emptyList()
         if (ph.size >= 3 && words.isNotEmpty()) {
@@ -328,6 +334,7 @@ class ReaderActivity : BaseActivity() {
             items.add((if (Library.isFavorite(key)) "הסרה מהמועדפים" else "הוספת העמוד למועדפים ★") to {
                 val on = Library.toggleFavorite(key); toast(if (on) "נוסף למועדפים" else "הוסר מהמועדפים")
             })
+            items.add("📄 תצוגת טקסט – שורות מסודרות" to { textView() })
             items.add("העתקת הטקסט של העמוד" to { copyPage() })
             items.add("שיתוף הקובץ" to {
                 val i = Intent(Intent.ACTION_SEND).setType("application/pdf")
@@ -335,11 +342,64 @@ class ReaderActivity : BaseActivity() {
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 safeStart(Intent.createChooser(i, "שיתוף"))
             })
-            items.add("פתיחה באפליקציה אחרת" to { Library.openExternal(this, p, page, terms, chooser = true) })
+            items.add("פתיחה באפליקציה אחרת" to { Library.openExternal(this, p, page, terms, chooser = true, phrase = phrase?.takeIf { page == phrasePage }) })
         }
         items.add(if (view.zoomed()) "חזרה לגודל מלא" to { view.reset() } else "הגדלה ×2" to { view.zoomTo(2f) })
         Sheet.actions(this, "עמוד $page", items)
     }
+
+    /**
+     * The page as clean text: lines joined into paragraphs, large letters, the searched words or the
+     * answering sentence marked. Reads well even when the PDF is an old scan (its text comes from OCR).
+     */
+    private fun textView() {
+        val p = path ?: return
+        val b = Db.get().bookByPath(p)
+        var pg = page
+        val body = vbox().apply { setPadding(dp(18), dp(14), dp(18), dp(14)) }
+        val head = label("", 15f, Col.ACC, true)
+        val tv = label("", 19f, Col.TEXT).apply { setLineSpacing(0f, 1.35f); setTextIsSelectable(true) }
+        fun render() {
+            head.text = "עמוד $pg" + (b?.let { " · " + it.title } ?: "")
+            val raw = b?.let { Db.get().pageText(it.id, pg) }
+            if (raw.isNullOrBlank()) { tv.text = "אין עדיין טקסט לעמוד הזה (אם הוא סרוק – הזיהוי (OCR) עוד לא הגיע אליו)."; return }
+            // join broken lines; a line that ends a sentence starts a new paragraph
+            val sb = StringBuilder()
+            for (line in raw.split('\n').map { it.trim() }.filter { it.isNotEmpty() }) {
+                if (sb.isNotEmpty()) sb.append(if (sb.last() in ".:?!") "\n\n" else " ")
+                sb.append(line)
+            }
+            val text = sb.toString()
+            val sp = android.text.SpannableString(text)
+            fun mark(st: Int, en: Int) {
+                sp.setSpan(android.text.style.BackgroundColorSpan(if (Col.isEink) 0x40000000 else 0x66FFB300), st, en, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                sp.setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), st, en, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            val ph = phrase?.takeIf { pg == phrasePage }
+            val at = ph?.let { text.indexOf(it.take(40)) } ?: -1
+            if (ph != null && at >= 0) mark(at, minOf(text.length, at + ph.length))
+            else for (t in terms.map { it.removeSuffix("*") }.filter { it.length > 1 }) {
+                var i = text.indexOf(t)
+                while (i >= 0) {
+                    var st = i; var en = i + t.length
+                    while (st > 0 && text[st - 1].isLetter()) st--
+                    while (en < text.length && text[en].isLetter()) en++
+                    mark(st, en); i = text.indexOf(t, en)
+                }
+            }
+            tv.text = sp
+        }
+        body.addView(head)
+        body.addView(android.widget.ScrollView(this).apply { addView(tv) }, lp(MATCH, dp(480)).m(0, dp(8), 0, dp(8)))
+        val row = hbox()
+        row.addView(pill("◀ הבא", false) { if (pg < pageCount) { pg++; render() } }, lp(0, WRAP, 1f).m(dp(3), 0, dp(3), 0))
+        row.addView(pill("לעמוד בתמונה") { page = pg; show(); dlg?.dismiss() }, lp(0, WRAP, 1.3f).m(dp(3), 0, dp(3), 0))
+        row.addView(pill("הקודם ▶", false) { if (pg > 1) { pg--; render() } }, lp(0, WRAP, 1f).m(dp(3), 0, dp(3), 0))
+        body.addView(row)
+        render()
+        dlg = Sheet.make(this, body).also { it.show() }
+    }
+    private var dlg: android.app.Dialog? = null
 
     private fun copyPage() {
         val p = path ?: return

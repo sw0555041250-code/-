@@ -18,7 +18,7 @@ android {
         versionCode = buildNumber
         versionName = "1.0.$buildNumber"
         ndk {
-            abiFilters += listOf("arm64-v8a")
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
     }
 

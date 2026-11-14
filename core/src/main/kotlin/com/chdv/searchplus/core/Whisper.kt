@@ -185,6 +185,8 @@ class Whisper(
     decoderPath: String,
     val tok: WhisperTokenizer,
     threads: Int = 4,
+    /** BASIC uses less memory while loading (weak devices); EXTENDED runs a little faster. */
+    optLevel: OrtSession.SessionOptions.OptLevel = OrtSession.SessionOptions.OptLevel.EXTENDED_OPT,
 ) : AutoCloseable {
     private val enc: OrtSession
     private val dec: OrtSession
@@ -193,7 +195,7 @@ class Whisper(
     init {
         fun opts() = OrtSession.SessionOptions().apply {
             setIntraOpNumThreads(threads)
-            setOptimizationLevel(OrtSession.SessionOptions.OptLevel.EXTENDED_OPT)
+            setOptimizationLevel(optLevel)
         }
         enc = env.createSession(encoderPath, opts())
         dec = try { env.createSession(decoderPath, opts()) } catch (e: Throwable) { enc.close(); throw e }

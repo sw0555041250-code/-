@@ -538,6 +538,17 @@ class MainActivity : BaseActivity() {
     private fun checkLastExit() {
         val busy = Prefs.l("voiceBusy", 0L)
         Prefs.put("voiceBusy", 0L)
+        // the meaning index was being built when the app closed: don't let it close the app again on every start
+        val sem = Prefs.l("semBusy", 0L)
+        Prefs.put("semBusy", 0L)
+        if (sem > 0 && !Progress.running) {
+            Prefs.put("semantic", false)
+            Semantic.lastError = "בניית אינדקס המשמעות נעצרה כי המכשיר סגר את התוכנה. אפשר להפעיל שוב מההגדרות (מומלץ בטעינה, בלילה)."
+            Sheet.confirm(this, "אינדקס המשמעות נעצר", "בזמן בניית אינדקס המשמעות המכשיר סגר את התוכנה (כנראה חוסר זיכרון). כדי שזה לא יחזור – הבנייה הופסקה.\n\nהחיפוש לפי משמעות עדיין עובד על העמודים שמכילים את מילות השאלה.", "לנסות שוב עכשיו") {
+                Prefs.put("semantic", true); Indexer.start(this)
+            }
+            return
+        }
         if (android.os.Build.VERSION.SDK_INT < 30) {
             if (busy > 0) voiceCrashSheet("")
             return

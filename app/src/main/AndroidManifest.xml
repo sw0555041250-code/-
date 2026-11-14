@@ -80,6 +80,10 @@
         <activity android:name=".OrganizeActivity" android:exported="false" />
 
         <service
+            android:name=".VoiceService"
+            android:process=":voice"
+            android:exported="false" />
+        <service
             android:name=".IndexService"
             android:exported="false" />
 

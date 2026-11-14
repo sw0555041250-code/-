@@ -118,6 +118,7 @@ object Semantic {
         if (books.isEmpty()) return
         Progress.phase = "בונה אינדקס לפי משמעות"
         Progress.total = books.size; Progress.done = 0
+        Prefs.put("semBusy", System.currentTimeMillis())
         try {
             open(c)
         } catch (e: Throwable) {
@@ -161,6 +162,7 @@ object Semantic {
             }
         } finally {
             close()
+            Prefs.put("semBusy", 0L)
         }
     }
 

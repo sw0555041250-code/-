@@ -249,6 +249,50 @@ object Ocr {
         }
     }
 
+    /**
+     * Where each word is on a scanned page (no text layer): the page is read with OCR and every
+     * word's box returned, in the coordinates of an image [width] pixels wide – so the reader can
+     * mark the searched words even in old scanned books.
+     */
+    fun wordBoxes(c: Context, path: String, index: Int, width: Int): List<Pair<String, android.graphics.RectF>> {
+        if (!ready(c)) return emptyList()
+        val out = ArrayList<Pair<String, android.graphics.RectF>>()
+        val api = TessBaseAPI()
+        if (!api.init(dir(c).absolutePath, "heb")) { api.recycle(); return out }
+        try {
+            ParcelFileDescriptor.open(File(path), ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
+                PdfRenderer(pfd).use { r ->
+                    if (index < 0 || index >= r.pageCount) return out
+                    r.openPage(index).use { p ->
+                        val w = 1700
+                        val h = (w.toLong() * p.height / p.width.coerceAtLeast(1)).toInt().coerceIn(100, 3000)
+                        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                        bmp.eraseColor(Color.WHITE)
+                        p.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
+                        api.setImage(bmp)
+                        api.getUTF8Text()
+                        val k = width.toFloat() / w
+                        val it = api.resultIterator
+                        if (it != null) {
+                            it.begin()
+                            do {
+                                val t = it.getUTF8Text(TessBaseAPI.PageIteratorLevel.RIL_WORD) ?: continue
+                                val b = it.getBoundingRect(TessBaseAPI.PageIteratorLevel.RIL_WORD)
+                                val word = Heb.clean(t).filter { ch -> ch.isLetterOrDigit() }
+                                if (word.isNotEmpty()) out.add(word to android.graphics.RectF(b.left * k - 3, b.top * k - 3, b.right * k + 3, b.bottom * k + 3))
+                            } while (it.next(TessBaseAPI.PageIteratorLevel.RIL_WORD))
+                            it.delete()
+                        }
+                        api.clear()
+                        bmp.recycle()
+                    }
+                }
+            }
+        } catch (e: Throwable) {
+        } finally { api.recycle() }
+        return out
+    }
+
     private fun ocrPage(api: TessBaseAPI, r: PdfRenderer, index: Int): String? {
         if (index < 0 || index >= r.pageCount) return null
         r.openPage(index).use { p ->

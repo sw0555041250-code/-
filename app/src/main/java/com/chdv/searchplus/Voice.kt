@@ -65,6 +65,8 @@ object VoiceModels {
         return File(base, "whisper-$key")
     }
 
+    fun paths(c: Context, key: String) = files(c, key)
+
     private fun files(c: Context, key: String) = dir(c, key).let {
         Triple(File(it, "encoder_model_quantized.onnx"), File(it, "decoder_model_merged_quantized.onnx"), File(it, "tokenizer.json"))
     }
@@ -316,52 +318,64 @@ object VoiceSearch {
         val u = window(a, { rec.stop = true }, { closed = true; rec.cancel = true; Progress.paused = false })
         cur = u
         Progress.paused = true
+        // the model loads in its own process while the user speaks
+        VoiceRemote.warm(a)
         Thread {
-            // load the model while the user speaks
-            var w: Whisper? = null
-            var loadErr: Throwable? = null
-            val loader = Thread { try { w = VoiceModels.Engine.get(a) } catch (e: Throwable) { loadErr = e } }.apply { start() }
             val audio = try { rec.record() } catch (e: Throwable) { null }
-            if (closed) { loader.join(); cur = null; VoiceModels.Engine.releaseLater(); return@Thread }
+            if (closed) { cur = null; return@Thread }
             if (audio == null || audio.size < 16000 / 3) {
                 ui { u.d.dismiss(); a.toast(if (audio == null) "לא ניתן להשתמש במיקרופון" else "לא נקלט דיבור. נסו שוב") }
-                loader.join(); cur = null; VoiceModels.Engine.releaseLater(); return@Thread
+                cur = null; Progress.paused = false; return@Thread
             }
-            ui { u.title.text = "⏳ מזהה את הדיבור…"; u.btn.visibility = View.GONE; level(u, 0f) }
-            val t0 = System.currentTimeMillis()
-            val ticker = object : Runnable { override fun run() {
-                if (closed || cur == null) return
-                u.title.text = "⏳ מזהה את הדיבור… ${(System.currentTimeMillis() - t0) / 1000} שנ׳"
-                App.main.postDelayed(this, 1000)
-            } }
-            App.main.post(ticker)
-            Prefs.put("voiceBusy", System.currentTimeMillis())
-            loader.join()
-            val text = try {
-                val m = w ?: throw (loadErr ?: IllegalStateException("המודל לא נטען"))
-                m.transcribe(audio, "he", Whisper.PROMPT) { closed }.also {
-                    Prefs.put("voiceLast", "${(System.currentTimeMillis() - t0) / 1000} שנ׳ · \"$it\"")
+            ui {
+                u.title.text = "⏳ מזהה את הדיבור…"; u.btn.visibility = View.GONE; level(u, 0f)
+                val t0 = System.currentTimeMillis()
+                val ticker = object : Runnable { override fun run() {
+                    if (closed || cur == null) return
+                    u.title.text = "⏳ מזהה את הדיבור… ${(System.currentTimeMillis() - t0) / 1000} שנ׳"
+                    App.main.postDelayed(this, 1000)
+                } }
+                App.main.post(ticker)
+                VoiceRemote.transcribe(a, audio) { r ->
+                    App.main.removeCallbacks(ticker)
+                    cur = null
+                    Progress.paused = false
+                    if (closed) return@transcribe
+                    u.d.dismiss()
+                    when {
+                        r.text != null -> {
+                            Prefs.put("voiceLast", "${r.ms / 1000} שנ׳ · \"${r.text}\"")
+                            // very slow on this device: suggest the faster level once
+                            if (r.encMs > 25_000 && VoiceModels.spec().key != "base" && !Prefs.b("slowHinted", false)) {
+                                Prefs.put("slowHinted", true)
+                                a.toast("הזיהוי איטי במכשיר הזה – אפשר לבחור בהגדרות זיהוי \"מהיר\"")
+                            }
+                            val clean = r.text.trim().trimEnd('.', '!', '?')
+                            if (clean.isBlank()) a.toast("לא נקלט דיבור. נסו שוב") else onText(clean)
+                        }
+                        else -> failed(a, r, onText)
+                    }
                 }
-            } catch (e: OutOfMemoryError) {
-                VoiceModels.Engine.release(); System.gc()
-                ui { u.d.dismiss(); Sheet.info(a, "אין מספיק זיכרון", "המכשיר עמוס כרגע. סגרו אפליקציות אחרות ונסו שוב, או בחרו בהגדרות את מודל הדיבור המהיר (קטן יותר).") }
-                null
-            } catch (e: Throwable) {
-                VoiceModels.Engine.release()
-                ui { u.d.dismiss(); Sheet.info(a, "זיהוי הדיבור נכשל", (e.message ?: e.javaClass.simpleName) + "\n\nאפשר לנסות שוב, או להוריד מחדש את המודל בהגדרות.") }
-                null
-            }
-            cur = null
-            Prefs.put("voiceBusy", 0L)
-            App.main.removeCallbacks(ticker)
-            Progress.paused = false
-            VoiceModels.Engine.releaseLater()
-            if (text != null && !closed) ui {
-                u.d.dismiss()
-                val clean = text.trim().trimEnd('.', '!', '?')
-                if (clean.isBlank()) a.toast("לא נקלט דיבור. נסו שוב") else onText(clean)
             }
         }.start()
+    }
+
+    /** Recognition failed or its process died: never just close – offer what can work on this device. */
+    private fun failed(a: Activity, r: VoiceRemote.Result, onText: (String) -> Unit) {
+        val cur = VoiceModels.spec()
+        val lower = VoiceModels.SPECS.getOrNull(VoiceModels.SPECS.indexOf(cur) - 1)
+        val items = ArrayList<Pair<String, () -> Unit>>()
+        if (lower != null) items.add("🎤 לנסות עם זיהוי ${lower.title} (קל יותר למכשיר)" to {
+            Prefs.put("whisperModel", lower.key)
+            if (VoiceModels.ready(a, lower.key)) listenWhisper(a, onText) else downloadNow(a, lower.key) { listenWhisper(a, onText) }
+        })
+        if (systemAvailable(a)) items.add("🌐 זיהוי דרך האינטרנט (שירות הדיבור של המכשיר)" to { Prefs.put("voiceEngine", "system"); listenSystem(a, onText) })
+        items.add("⌨ להקליד במקום לדבר" to { a.startActivity(android.content.Intent(a, VoiceActivity::class.java)) })
+        val why = when {
+            r.died -> "המכשיר עצר את הזיהוי (כנראה חוסר זיכרון). התוכנה עצמה ממשיכה לעבוד."
+            else -> r.error ?: "שגיאה"
+        }
+        Sheet.actions(a, "הזיהוי לא הצליח – $why", items)
     }
 
     @Volatile private var cur: Ui? = null

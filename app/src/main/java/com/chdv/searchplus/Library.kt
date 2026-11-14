@@ -154,7 +154,19 @@ object Library {
      * (no "open with" question). The page number is sent in the ways readers know; the searched words
      * are copied, so they can be pasted into the reader's own search to mark them.
      */
-    fun openExternal(a: Activity, path: String, page: Int, terms: List<String> = emptyList(), chooser: Boolean = false) {
+    fun openExternal(a: Activity, path: String, page: Int, terms: List<String> = emptyList(), chooser: Boolean = false, phrase: String? = null) {
+        // the app can't be told the page and the words: give it the found page, marked, as a small PDF
+        if ((terms.isNotEmpty() || phrase != null) && Prefs.b("excerpt", true)) {
+            a.toast("מכין את העמוד המסומן…")
+            Thread {
+                val ex = Excerpt.make(a, path, page, terms, phrase)
+                ui {
+                    if (ex != null) openExternal(a, ex.absolutePath, 1, emptyList(), chooser)
+                    else openExternal(a, path, page, emptyList(), chooser)
+                }
+            }.start()
+            return
+        }
         val f = File(path)
         val uri = uriFor(a, f)
         val i = Intent(Intent.ACTION_VIEW)

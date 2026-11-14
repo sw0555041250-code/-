@@ -170,7 +170,10 @@ class SettingsActivity : BaseActivity() {
                 render()
             }
         }
-        if (ow == "external") toggle("העתקת מילות החיפוש בפתיחה", "כדי להדביק אותן בחיפוש של הקורא ולסמן אותן שם", "copyTerms", true)
+        if (ow == "external") {
+            toggle("לפתוח את העמוד שנמצא – מסומן", "האפליקציה (ReadEra וכו׳) מקבלת את העמוד שנמצא ו-4 העמודים שאחריו, עם המילים מסומנות בצהוב. כבוי = הספר המלא", "excerpt", true)
+            toggle("העתקת מילות החיפוש בפתיחה", "כדי להדביק אותן בחיפוש של הקורא", "copyTerms", true)
+        }
         val th = Prefs.s("theme", "auto")
         item("🎨 ערכת נושא", (Col.THEMES.firstOrNull { it.first == th }?.second ?: "כחול") + if (th == "auto") (" – " + if (Col.isEink) "שחור-לבן (זוהה מסך E-ink)" else "כחול") else "") {
             Sheet.choice(this, "ערכת נושא", Col.THEMES, th) {
