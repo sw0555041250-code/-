@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.SearchPlus" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="colorPrimary">#1F3A5F</item>
+        <item name="colorPrimaryDark">#FFFFFF</item>
+        <item name="colorAccent">#1F3A5F</item>
+        <item name="colorControlActivated">#1F3A5F</item>
+        <item name="colorControlNormal">#555555</item>
+        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:statusBarColor">@android:color/white</item>
+        <item name="android:navigationBarColor">@android:color/white</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
+</resources>
