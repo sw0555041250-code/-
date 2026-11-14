@@ -70,6 +70,8 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
+    // "Connect Google Drive": the user's permission to read their books in Drive (Google sign-in)
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
     // PDF text extraction (including the position of every letter, for highlighting)
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     // On-device AI model for search by meaning

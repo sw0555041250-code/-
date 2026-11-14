@@ -48,11 +48,14 @@ class CloudActivity : BaseActivity() {
         head.addView(label("יש לכם מאגר ספרים בדרייב? מביאים אותו פעם אחת למכשיר – ומאז מחפשים בו כמו בכל ספר, גם בלי אינטרנט.", 14.5f, 0xEEFFFFFF.toInt()).apply { setPadding(0, dp(6), 0, 0) })
         box.addView(head, lp(MATCH, WRAP).m(0, dp(4), 0, dp(14)))
 
-        box.addView(pill("📄 בחירת ספרים מ-Drive") { pickFiles() }, lp(MATCH, WRAP).m(0, dp(4), 0, dp(4)))
+        box.addView(pill("🔗 חיבור לחשבון Google Drive") { DriveSync.run(this, cloudDir(this)) { refresh() } }, lp(MATCH, WRAP).m(0, dp(4), 0, dp(2)))
+        box.addView(label("מתחברים פעם אחת עם חשבון Google ומאשרים קריאה. התוכנה מוצאת את כל ספרי ה-PDF ב-Drive, אתם בוחרים תיקיות – והם יורדים למכשיר ונסרקים. רק קריאה: שום דבר ב-Drive לא משתנה.", 13.5f, Col.SUB).apply { setPadding(dp(4), 0, dp(4), dp(12)) })
+        box.addView(label("או בלי חיבור חשבון:", 14f, Col.ACC, true).apply { setPadding(0, dp(4), 0, dp(2)) })
+        box.addView(pill("📄 בחירת ספרים ידנית", false) { pickFiles() }, lp(MATCH, WRAP).m(0, dp(4), 0, dp(4)))
         box.addView(pill("📁 בחירת תיקייה שלמה", false) { pickTree() }, lp(MATCH, WRAP).m(0, dp(4), 0, dp(10)))
         box.addView(label("איך זה עובד", 15f, Col.ACC, true).apply { setPadding(0, dp(10), 0, dp(4)) })
         box.addView(label(
-            "1. לוחצים \"בחירת ספרים מ-Drive\". בחלון שנפתח לוחצים ☰ ובוחרים Google Drive (צריך שאפליקציית Drive תהיה מותקנת ומחוברת לחשבון).\n" +
+            "בחירה ידנית: 1. לוחצים \"בחירת ספרים ידנית\". בחלון שנפתח לוחצים ☰ ובוחרים Google Drive (צריך שאפליקציית Drive תהיה מותקנת ומחוברת לחשבון).\n" +
             "2. מסמנים ספרים – אפשר הרבה ביחד (לחיצה ארוכה על הראשון, ואז על השאר) – ולוחצים \"בחירה\".\n" +
             "3. הספרים יורדים לתיקייה במכשיר, נכנסים למאגר ונסרקים. זהו – מחפשים.\n\n" +
             "בחירת תיקייה שלמה עובדת בכרטיס הזיכרון ובחלק מאפליקציות הענן. Google Drive מאפשר לבחור קבצים (הרבה ביחד), לא תיקייה שלמה.", 14.5f, Col.SUB).apply { setLineSpacing(0f, 1.2f) })
@@ -85,6 +88,7 @@ class CloudActivity : BaseActivity() {
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         @Suppress("DEPRECATION") super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == DriveSync.REQ) { if (resultCode == RESULT_OK) DriveSync.onResult(this, requestCode, data); return }
         if (resultCode != RESULT_OK || data == null) return
         when (requestCode) {
             PICK_FILES -> {
