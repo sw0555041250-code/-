@@ -119,7 +119,7 @@ object Search {
             bh.pages.add(PageHit(h.pageId, ref.second, h.score))
             bh.score = maxOf(bh.score, h.score)
         }
-        return Results(q, terms(q), byBook.values.toList(), true, false)
+        return Results(q, Semantic.keyWords(q), byBook.values.toList(), true, false)
     }
 
     /** Snippet with the matching words wrapped in \u0001 ... \u0002. */

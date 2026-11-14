@@ -667,10 +667,10 @@ class MainActivity : BaseActivity() {
         if (!cur) { paintFlags = paintFlags or android.graphics.Paint.UNDERLINE_TEXT_FLAG; setOnClickListener { onClick() } }
     }
 
-    private fun openHit(h: BookHit, page: Int) {
+    private fun openHit(h: BookHit, page: Int, phrase: String? = null) {
         val r = results ?: return
         val hitPages = h.pages.map { it.page }.distinct().sorted().toIntArray()
-        ReaderActivity.open(this, h.book.path, page, r.terms, hitPages)
+        ReaderActivity.open(this, h.book.path, page, r.terms, hitPages, phrase = phrase)
     }
 
     private fun bookMenu(h: BookHit) {
@@ -696,6 +696,8 @@ class MainActivity : BaseActivity() {
     }
 
     private val snippetCache = HashMap<Long, CharSequence>()
+    /** Question & answer: the sentence that answers, per page – opened framed in the reader. */
+    private val sentenceOf = java.util.concurrent.ConcurrentHashMap<Long, String>()
 
     private fun marked(s: String): CharSequence {
         val sb = SpannableStringBuilder()
@@ -791,8 +793,11 @@ class MainActivity : BaseActivity() {
                         val sem = results?.semantic == true
                         val terms = results?.terms ?: emptyList()
                         val e = expr
+                        val q = results?.query ?: ""
                         snipExec.execute {
-                            val s = (if (sem) Search.semanticSnippet(ph.pageId, terms) else Search.snippet(e, ph.pageId))?.replace('\n', ' ') ?: ""
+                            val s = (if (sem) (try { Semantic.sentenceFor(this@MainActivity, q, ph.pageId) } catch (x: Throwable) { null })
+                                ?.also { sentenceOf[ph.pageId] = it }?.let { "\u0001$it\u0002" } ?: Search.semanticSnippet(ph.pageId, terms)
+                            else Search.snippet(e, ph.pageId))?.replace('\n', ' ') ?: ""
                             val cs = marked(s)
                             ui {
                                 snippetCache[ph.pageId] = cs
@@ -800,7 +805,7 @@ class MainActivity : BaseActivity() {
                             }
                         }
                     }
-                    v.setOnClickListener { openHit(row.hit, ph.page) }
+                    v.setOnClickListener { openHit(row.hit, ph.page, sentenceOf[ph.pageId]) }
                     v.setOnLongClickListener {
                         val key = "${row.hit.book.path}|${ph.page}"
                         val on = Library.toggleFavorite(key)
@@ -820,7 +825,7 @@ class MainActivity : BaseActivity() {
                     }
                     v.findViewById<TextView>(3).text = if (src != null && a != null && a.pageId >= 0) "📖 ${src.first.title}, עמוד ${src.second}  ·  לפתיחה ◂" else ""
                     v.setOnClickListener {
-                        if (src != null) ReaderActivity.open(this@MainActivity, src.first.path, src.second, Heb.words(a!!.text).filter { it.length > 2 }.take(6))
+                        if (src != null) ReaderActivity.open(this@MainActivity, src.first.path, src.second, Semantic.keyWords(a!!.text).take(6), phrase = a.text)
                     }
                 }
                 is Row.More -> {

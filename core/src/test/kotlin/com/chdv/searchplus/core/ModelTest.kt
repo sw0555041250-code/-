@@ -113,4 +113,32 @@ class ModelTest {
             assertTrue(dot(q, good) > dot(q, bad))
         }
     }
+
+    @Test fun bgeM3() {
+        val bin = File(dir, "bge/vocab.bin")
+        E5Tokenizer.compile(need("bge/tokenizer.json"), bin)
+        val tok = E5Tokenizer.load(bin)
+        val env = OrtEnvironment.getEnvironment()
+        val t0 = System.currentTimeMillis()
+        E5Model(env, need("bge/model_quantized.onnx").path, tok, cls = true, lowMemory = true).use { m ->
+            println("bge load ${System.currentTimeMillis() - t0}ms")
+            val vecs = ArrayList<FloatArray>()
+            for (l in need("bge_ref.txt").readLines().filter { it.isNotBlank() }) {
+                val (text, ids, vec) = l.split('\t')
+                assertArrayEquals("tokens of 「$text」", ids.split(',').map { it.toLong() }.toLongArray(), tok.tokenize(text, 512))
+                val ref = vec.split(',').map { it.toFloat() }
+                val t1 = System.currentTimeMillis()
+                val v = m.embed(text, 512)
+                var dot = 0f
+                for (d in v.indices) dot += v[d] * ref[d]
+                println("bge cos=$dot (${System.currentTimeMillis() - t1}ms) $text")
+                assertTrue(dot > 0.999f)
+                vecs.add(v)
+            }
+            fun dot(a: FloatArray, b: FloatArray) = a.indices.sumOf { (a[it] * b[it]).toDouble() }
+            println("bge good=${dot(vecs[0], vecs[1])} bad=${dot(vecs[0], vecs[2])}")
+            assertTrue(dot(vecs[0], vecs[1]) > dot(vecs[0], vecs[2]))
+            println("bge peak memory: " + File("/proc/self/status").readLines().filter { it.startsWith("VmHWM") })
+        }
+    }
 }

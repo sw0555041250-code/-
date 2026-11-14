@@ -237,6 +237,40 @@ object Semantic {
         return scores.entries.sortedByDescending { it.value }.take(300).map { Hit(it.key, it.value) }
     }
 
+    private var qText = ""
+    private var qVec: FloatArray? = null
+
+    @Synchronized
+    private fun queryVec(c: Context, q: String): FloatArray {
+        if (q == qText) qVec?.let { return it }
+        return embed(c, "query: $q", 96).also { qText = q; qVec = it }
+    }
+
+    /** Sentences of a page (or ~30-word pieces where the text has no punctuation). */
+    fun sentences(body: String): List<String> {
+        val out = ArrayList<String>()
+        for (part in body.replace('\n', ' ').split(Regex("(?<=[.:;?!])\\s+"))) {
+            val ws = part.split(' ').filter { it.isNotBlank() }
+            if (ws.size < 5) continue
+            var i = 0
+            while (i < ws.size) { out.add(ws.subList(i, minOf(ws.size, i + 35)).joinToString(" ")); i += 30 }
+        }
+        return out
+    }
+
+    /**
+     * The sentence of a page whose meaning is closest to the question – shown in the results and
+     * marked in the reader, instead of scattered words.
+     */
+    fun sentenceFor(c: Context, question: String, pageId: Long): String? {
+        val body = Db.get().pageTextById(pageId) ?: return null
+        val kw = keyWords(question)
+        val cand = sentences(body).sortedByDescending { s -> kw.count { s.contains(it) } }.take(6)
+        if (cand.isEmpty()) return null
+        val q = queryVec(c, question)
+        return cand.maxByOrNull { dot(q, embed(c, "passage: $it", 80)) }
+    }
+
     fun vectorCount(c: Context): Long = vectorsFile(c).length() / REC
 
     class Answer(val text: String, val pageId: Long, val score: Float)

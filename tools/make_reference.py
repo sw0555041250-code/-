@@ -147,4 +147,26 @@ with open(os.path.join(out, "e5_ref.txt"), "w", encoding="utf-8") as f:
         v = h.mean(axis=0)
         v = v / np.linalg.norm(v)
         f.write(t + "\t" + ",".join(map(str, enc.ids)) + "\t" + ",".join(f"{x:.6f}" for x in v) + "\n")
+# ---------- bge-m3 (the deep understanding model): tokens, CLS vectors ----------
+try:
+    for f in ["onnx/model_quantized.onnx", "tokenizer.json"]:
+        p = hf_hub_download("Xenova/bge-m3", f, local_dir=os.path.join(out, "_hf", "bge"))
+        dst = os.path.join(out, "bge", os.path.basename(f))
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        if not os.path.exists(dst):
+            os.symlink(p, dst)
+        print("bge", os.path.basename(f), os.path.getsize(p) // 1024 // 1024, "MB")
+    bt = Tokenizer.from_file(os.path.join(out, "bge", "tokenizer.json"))
+    bs = ort.InferenceSession(os.path.join(out, "bge", "model_quantized.onnx"))
+    print("bge inputs", [i.name for i in bs.get_inputs()], "outputs", [o.name for o in bs.get_outputs()])
+    with open(os.path.join(out, "bge_ref.txt"), "w", encoding="utf-8") as f:
+        for t in ["מה מברכים על פרי העץ", "על פירות האילן הוא אומר בורא פרי העץ", "מי שנתחייב מלקות לוקה ארבעים חסר אחת"]:
+            enc = bt.encode(t)
+            ids = np.array([enc.ids], dtype=np.int64)
+            feed = {"input_ids": ids, "attention_mask": np.ones_like(ids)}
+            h = bs.run(None, feed)[0][0]
+            v = h[0] / np.linalg.norm(h[0])
+            f.write(t + "\t" + ",".join(map(str, enc.ids)) + "\t" + ",".join(f"{x:.6f}" for x in v) + "\n")
+except Exception as e:
+    print("bge-m3 skipped:", e)
 print("reference ready")

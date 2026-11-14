@@ -404,10 +404,13 @@ class E5Tokenizer private constructor(private val vocab: HashMap<String, Int>, p
 }
 
 /** Runs the e5 model on a piece of text and returns a normalized 384-number vector. */
-class E5Model(private val env: OrtEnvironment, modelPath: String, val tok: E5Tokenizer, threads: Int = 4) : AutoCloseable {
+class E5Model(private val env: OrtEnvironment, modelPath: String, val tok: E5Tokenizer, threads: Int = 4,
+              /** true for models that use the first token as the sentence vector (bge-m3); false = average (e5). */
+              private val cls: Boolean = false, lowMemory: Boolean = false) : AutoCloseable {
     private val s: OrtSession = env.createSession(modelPath, OrtSession.SessionOptions().apply {
         setIntraOpNumThreads(threads)
         setOptimizationLevel(OrtSession.SessionOptions.OptLevel.EXTENDED_OPT)
+        if (lowMemory) { setCPUArenaAllocator(false); setMemoryPatternOptimization(false) }
     })
     private val needsTypes = s.inputNames.contains("token_type_ids")
 
@@ -428,6 +431,7 @@ class E5Model(private val env: OrtEnvironment, modelPath: String, val tok: E5Tok
                 val dim = sh[sh.size - 1].toInt()
                 val v = FloatArray(dim)
                 if (sh.size == 2) { for (d in 0 until dim) v[d] = fb.get(d) } // already pooled
+                else if (cls) { for (d in 0 until dim) v[d] = fb.get(d) } // first token
                 else {
                     val rows = sh[1].toInt()
                     for (row in 0 until rows) for (d in 0 until dim) v[d] += fb.get(row * dim + d)

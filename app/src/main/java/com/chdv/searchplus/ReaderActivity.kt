@@ -37,9 +37,9 @@ class ReaderActivity : BaseActivity() {
 
     companion object {
         fun open(c: Context, path: String, page: Int, terms: List<String> = emptyList(), hits: IntArray? = null,
-                 refLabel: String? = null, amudIndex: Int = -1, exact: Boolean = true) {
+                 refLabel: String? = null, amudIndex: Int = -1, exact: Boolean = true, phrase: String? = null) {
             if (c is android.app.Activity && !Prefs.b("readerChosen", false)) {
-                Library.chooseDefault(c) { open(c, path, page, terms, hits, refLabel, amudIndex, exact) }
+                Library.chooseDefault(c) { open(c, path, page, terms, hits, refLabel, amudIndex, exact, phrase) }
                 return
             }
             if (Prefs.s("openWith", "internal") == "external" && c is android.app.Activity) {
@@ -51,7 +51,8 @@ class ReaderActivity : BaseActivity() {
                 .putExtra("path", path).putExtra("page", page)
                 .putExtra("terms", terms.toTypedArray())
                 .putExtra("hits", hits)
-                .putExtra("refLabel", refLabel).putExtra("amudIndex", amudIndex).putExtra("exact", exact))
+                .putExtra("refLabel", refLabel).putExtra("amudIndex", amudIndex).putExtra("exact", exact)
+                .putExtra("phrase", phrase))
         }
     }
 
@@ -63,6 +64,9 @@ class ReaderActivity : BaseActivity() {
     private var pageCount = 0
     private var page = 1
     private var terms: List<String> = emptyList()
+    /** The sentence to mark (from question & answer). */
+    private var phrase: String? = null
+    private var phrasePage = 0
     private var hits: IntArray = IntArray(0)
     private lateinit var view: PageView
     private lateinit var pageLabel: TextView
@@ -80,6 +84,8 @@ class ReaderActivity : BaseActivity() {
         } else path = intent.getStringExtra("path")
         page = savedInstanceState?.getInt("page") ?: intent.getIntExtra("page", 0).let { if (it <= 0 && path != null) Library.lastPage(path!!) else it.coerceAtLeast(1) }
         terms = intent.getStringArrayExtra("terms")?.toList() ?: emptyList()
+        phrase = intent.getStringExtra("phrase")
+        phrasePage = page
         hits = intent.getIntArrayExtra("hits") ?: IntArray(0)
 
         build()
@@ -201,7 +207,7 @@ class ReaderActivity : BaseActivity() {
             val bmp = rendered.first
             val pageW = rendered.second
             ui { if (token == renderToken) view.setPage(bmp, emptyList()) else bmp.recycle() }
-            if (terms.isNotEmpty() && path != null) {
+            if ((terms.isNotEmpty() || phrase != null) && path != null) {
                 val rects = try { highlights(p, bmp.width / pageW) } catch (e: Throwable) { emptyList() }
                 ui { if (token == renderToken && rects.isNotEmpty()) view.setHighlights(rects) }
             }
@@ -209,23 +215,25 @@ class ReaderActivity : BaseActivity() {
     }
 
     /** Find the boxes of the searched words on the page with PDFBox (positions of every letter). */
+    /**
+     * Boxes to mark on the page. With a [phrase] (the sentence that answers a question) the run of
+     * words that best matches it is marked as one passage; otherwise every word that contains a
+     * searched word.
+     */
     private fun highlights(p: Int, scale: Float): List<RectF> {
         val d = doc ?: Indexer.loadDoc(File(path!!)).also { doc = it }
         val plain = PDFTextStripper().apply { startPage = p; endPage = p }
         val raw = plain.getText(d)
         val method = Heb.repairPage(raw).method
-        val want = terms.map { it.removeSuffix("*") }.filter { it.isNotEmpty() }
-        val minLen = if (want.size == 1) 1 else 2
-        val out = ArrayList<RectF>()
+        val words = ArrayList<Pair<String, RectF>>()
         val st = object : PDFTextStripper() {
             override fun writeString(text: String?, textPositions: MutableList<TextPosition>?) {
                 val tps = textPositions ?: return
                 val word = ArrayList<TextPosition>()
                 fun flush() {
                     if (word.isEmpty()) return
-                    val s = Heb.clean(Heb.applyMethod(word.joinToString("") { it.unicode ?: "" }, method))
-                    val letters = s.filter { it.isLetterOrDigit() }
-                    if (want.any { it.length >= minLen && letters.contains(it) }) {
+                    val s = Heb.clean(Heb.applyMethod(word.joinToString("") { it.unicode ?: "" }, method)).filter { it.isLetterOrDigit() }
+                    if (s.isNotEmpty()) {
                         var l = Float.MAX_VALUE; var t = Float.MAX_VALUE; var r = -1f; var b = -1f
                         for (tp in word) {
                             val x = tp.xDirAdj; val y = tp.yDirAdj
@@ -233,8 +241,8 @@ class ReaderActivity : BaseActivity() {
                             l = minOf(l, x); r = maxOf(r, x + tp.widthDirAdj)
                             t = minOf(t, y - h); b = maxOf(b, y)
                         }
-                        val pad = 1.5f
-                        out.add(RectF((l - pad) * scale, (t - pad) * scale, (r + pad) * scale, (b + pad * 2) * scale))
+                        val pad = 2.5f
+                        words.add(s to RectF((l - pad) * scale, (t - pad) * scale, (r + pad) * scale, (b + pad * 2) * scale))
                     }
                     word.clear()
                 }
@@ -245,9 +253,29 @@ class ReaderActivity : BaseActivity() {
                 flush()
             }
         }
+        st.sortByPosition = Prefs.b("sortByPosition", false)
         st.startPage = p; st.endPage = p
         st.getText(d)
-        return out
+
+        val ph = phrase?.takeIf { p == phrasePage }?.let { Heb.words(it).filter { w -> w.length > 1 } } ?: emptyList()
+        if (ph.size >= 3 && words.isNotEmpty()) {
+            // slide a window as long as the sentence and keep the place where most of its words are
+            val n = minOf(ph.size, 40)
+            val want = ph.take(n)
+            var best = -1; var bestScore = 0
+            for (i in words.indices) {
+                var sc = 0
+                for (k in 0 until n) {
+                    val w = words.getOrNull(i + k)?.first ?: break
+                    if (want.any { it == w || (it.length > 2 && (w.endsWith(it) || it.endsWith(w))) }) sc++
+                }
+                if (sc > bestScore) { bestScore = sc; best = i }
+            }
+            if (best >= 0 && bestScore >= minOf(3, n)) return words.subList(best, minOf(words.size, best + n)).map { it.second }
+        }
+        val want = terms.map { it.removeSuffix("*") }.filter { it.isNotEmpty() }
+        val minLen = if (want.size == 1) 1 else 2
+        return words.filter { (w, _) -> want.any { it.length >= minLen && w.contains(it) } }.map { it.second }
     }
 
     private fun next() { if (page < pageCount) { page++; show() } }
@@ -281,6 +309,7 @@ class ReaderActivity : BaseActivity() {
             val pages = r.books.firstOrNull()?.pages ?: emptyList()
             if (pages.isEmpty()) { Sheet.info(this, "לא נמצא", "\"$q\" לא נמצא בספר הזה."); return@input }
             terms = r.terms
+            phrase = null
             hits = pages.map { it.page }.distinct().toIntArray()
             val expr = Search.buildMatch(r.terms, Match.valueOf(Prefs.s("match", "PHRASE")), Prefs.b("prefixes", true))
             Sheet.actions(this, "נמצא ב-${hits.size} עמודים", pages.take(200).map { ph ->
@@ -351,8 +380,26 @@ class PageView(c: Context) : View(c) {
     private var tx = 0f
     private var ty = 0f
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG)
-    private val hl = Paint().apply { color = Col.HL; style = Paint.Style.FILL }
-    private val hlLine = Paint().apply { color = 0xFF000000.toInt(); style = Paint.Style.STROKE; strokeWidth = 2f }
+    private val hl = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = if (Col.isEink) 0x40000000 else 0x66FFB300; style = Paint.Style.FILL }
+    private val hlLine = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = if (Col.isEink) 0xFF000000.toInt() else 0xFFE65100.toInt(); style = Paint.Style.STROKE; strokeWidth = 2f }
+    private val mark = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = if (Col.isEink) 0xFF000000.toInt() else 0xFFE65100.toInt(); style = Paint.Style.FILL }
+    /** 0..1 – the "look here" pulse after the words were found */
+    private var pulse = 0f
+    private var pulseAnim: android.animation.ValueAnimator? = null
+
+    /** Words next to each other on the same line become one box, so a whole phrase is framed together. */
+    private fun merge(r: List<RectF>): List<RectF> {
+        val out = ArrayList<RectF>()
+        for (x in r.sortedWith(compareBy({ it.centerY() }, { it.left }))) {
+            val last = out.lastOrNull()
+            val h = x.height()
+            if (last != null && kotlin.math.abs(last.centerY() - x.centerY()) < h * 0.5f &&
+                (x.left - last.right < h * 1.6f && last.left - x.right < h * 1.6f)) {
+                last.union(x)
+            } else out.add(RectF(x))
+        }
+        return out
+    }
 
     fun setPage(b: Bitmap, r: List<RectF>) {
         val old = bmp
@@ -362,7 +409,29 @@ class PageView(c: Context) : View(c) {
         invalidate()
     }
 
-    fun setHighlights(r: List<RectF>) { rects = r; invalidate() }
+    fun setHighlights(r: List<RectF>) {
+        rects = merge(r)
+        // a phone screen: zoom in on the first place, so it is seen at once
+        val b = bmp
+        if (b != null && rects.isNotEmpty() && width < context.dp(600) && zoom <= 1.01f) {
+            val f = rects[0]
+            zoom = 1.8f
+            val s = base() * zoom
+            tx = width / 2f - f.centerX() * s
+            ty = height / 3f - f.centerY() * s
+            clamp()
+        }
+        // pulse a few times: "it is here"
+        pulseAnim?.cancel()
+        pulseAnim = android.animation.ValueAnimator.ofFloat(0f, 1f, 0f).apply {
+            duration = if (Col.isEink) 900 else 650
+            repeatCount = 2
+            addUpdateListener { pulse = it.animatedValue as Float; invalidate() }
+            addListener(object : android.animation.AnimatorListenerAdapter() { override fun onAnimationEnd(a: android.animation.Animator) { pulse = 0f; invalidate() } })
+            start()
+        }
+        invalidate()
+    }
     fun zoomed() = zoom > 1.01f
     fun reset() { zoom = 1f; tx = 0f; ty = 0f; invalidate() }
     fun zoomTo(z: Float) { zoom = z; tx = -(width * (z - 1) / 2); ty = -(height * (z - 1) / 2); clamp(); invalidate() }
@@ -388,8 +457,20 @@ class PageView(c: Context) : View(c) {
         canvas.translate(tx, ty)
         canvas.scale(s, s)
         canvas.drawBitmap(b, 0f, 0f, paint)
-        hlLine.strokeWidth = 2f / s
-        for (r in rects) { canvas.drawRect(r, hl); canvas.drawRect(r.left, r.bottom - 3f / s, r.right, r.bottom, hlLine) }
+        val d = context.resources.displayMetrics.density
+        hlLine.strokeWidth = (2.5f + 3f * pulse) * d / s
+        val grow = 6f * pulse * d / s
+        val rad = 5f * d / s
+        for (r in rects) {
+            val rr = RectF(r.left - grow, r.top - grow, r.right + grow, r.bottom + grow)
+            canvas.drawRoundRect(rr, rad, rad, hl)
+            canvas.drawRoundRect(rr, rad, rad, hlLine)
+            // a marker in the margin of that line
+            val cy = r.centerY(); val m = 7f * d / s
+            val x = b.width - 4f * d / s
+            val path = android.graphics.Path().apply { moveTo(x, cy - m); lineTo(x - m * 1.3f, cy); lineTo(x, cy + m); close() }
+            canvas.drawPath(path, mark)
+        }
         canvas.restore()
     }
 
