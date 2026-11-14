@@ -1690,12 +1690,33 @@ class MainActivity : BaseActivity() {
         crumbs.removeAllViews(); cats.removeAllViews()
         summary.text = ""
         homeBox.removeAllViews()
+        // welcome card
+        val hero = vbox().apply {
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+            background = roundBg(Col.ACC, dp(18).toFloat())
+        }
+        hero.addView(label("שלום! מה נלמד היום?", 19f, android.graphics.Color.WHITE, true))
+        val heroStats = label("טוען את נתוני המאגר…", 14f, 0xFFDDE6F2.toInt()).apply { setPadding(0, dp(4), 0, dp(12)) }
+        hero.addView(heroStats)
+        val quick = hbox()
+        fun q(t: String, onClick: () -> Unit) = label(t, 14.5f, Col.ACC, true).apply {
+            gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER
+            setPadding(dp(6), dp(10), dp(6), dp(10))
+            background = pressBg(android.graphics.Color.WHITE, Col.ACC_LIGHT, 14)
+            setOnClickListener { onClick() }
+        }
+        quick.addView(q("📚 עיון") { startActivity(Intent(this, BrowseActivity::class.java)) }, lp(0, WRAP, 1f).m(dp(3), 0, dp(3), 0))
+        quick.addView(q("💡 שאלה") { setMode(true); input.requestFocus() }, lp(0, WRAP, 1f).m(dp(3), 0, dp(3), 0))
+        quick.addView(q("🗂 סידור") { startActivity(Intent(this, OrganizeActivity::class.java)) }, lp(0, WRAP, 1f).m(dp(3), 0, dp(3), 0))
+        hero.addView(quick, lp(MATCH, WRAP))
+        homeBox.addView(hero, lp(MATCH, WRAP).m(0, dp(6), 0, dp(6)))
         exec.execute {
             val st = try { Db.get().stats() } catch (e: Exception) { null }
             ui {
-                if (st != null && st.books > 0) {
-                    homeBox.addView(label("במאגר: ${st.books} ספרים · ${st.textPages} עמודים עם טקסט" +
-                        (if (st.pending > 0) " · עוד ${st.pending} ספרים בתור לסריקה" else ""), 13.5f, Col.SUB).apply { setPadding(0, dp(4), 0, dp(8)) })
+                heroStats.text = when {
+                    st == null || st.books == 0 -> "עוד אין ספרים במאגר – בחרו את תיקיית הספרים כדי להתחיל."
+                    else -> "במאגר ${st.books} ספרים · ${st.textPages} עמודים שאפשר לחפש בהם" +
+                        (if (st.pending > 0) "\nעוד ${st.pending} ספרים בתור לסריקה" else "")
                 }
             }
         }
