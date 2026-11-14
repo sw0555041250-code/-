@@ -648,7 +648,7 @@ class MainActivity : BaseActivity() {
         jumpBar.visibility = View.VISIBLE
         jumpBar.setOnClickListener(null)
         exec.execute {
-            val targets = try { Jump.resolve(ref) } catch (e: Throwable) { emptyList() }
+            val targets = try { Jump.resolve(ref, q) } catch (e: Throwable) { emptyList() }
             ui {
                 if (token != searchToken) return@ui
                 if (targets.isEmpty()) {

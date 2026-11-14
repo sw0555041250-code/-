@@ -31,7 +31,7 @@ object Jump {
     /** Letters without the vowel letters – so "ליקוטי" = "לקוטי", "שולחן" = "שלחן". */
     private fun key(w: String) = w.filter { it !in "אהויע" }.replace('ך', 'כ').replace('ם', 'מ').replace('ן', 'נ').replace('ף', 'פ').replace('ץ', 'צ')
 
-    fun resolve(ref: Ref): List<Target> {
+    fun resolve(ref: Ref, raw: String? = null): List<Target> {
         val db = Db.get()
         val books = db.books().values
         val scored = ArrayList<Pair<Book, Int>>()
@@ -77,6 +77,21 @@ object Jump {
             }
             for (e in ref.extra) if (has(title, e) || has(path, e)) score += 6
             scored.add(b to score)
+        }
+        // the library's own names (folders and files as they are on the device): always part of the search
+        val request = raw ?: (listOf(ref.work) + ref.extra).joinToString(" ")
+        val fromNames = try { Catalog.find(request, ref.volume, 20) } catch (e: Throwable) { emptyList() }
+        val have = scored.map { it.first.id }.toHashSet()
+        for (m in fromNames) {
+            if (m.book.id in have) { val i = scored.indexOfFirst { it.first.id == m.book.id }; scored[i] = scored[i].first to (scored[i].second + (m.score * 3).toInt()) }
+            else if (ref.kind == Ref.Kind.GENERIC || scored.isEmpty()) {
+                // a Gemara / Sichos volume must still be the right one
+                if (ref.kind == Ref.Kind.SICHOS && ref.volume != null) {
+                    val v = PageFinder.volumeOf(m.book.title) ?: PageFinder.volumeOf(m.book.dir.substringAfterLast('/'))
+                    if (v != null && v != ref.volume) continue
+                }
+                scored.add(m.book to (m.score * 3).toInt())
+            }
         }
         val located = scored.sortedByDescending { it.second }.take(if (ref.siman != null || ref.chapter != null) 30 else 12).mapNotNull { (b, _) ->
             try { locate(b, ref) } catch (e: Throwable) { Target(b, 1, false, ref, null) }

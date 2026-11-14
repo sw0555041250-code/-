@@ -132,19 +132,21 @@ class VoiceActivity : BaseActivity() {
         exec.execute {
             val ref = try { RefParser.parse(text) } catch (e: Throwable) { null }
             val noDaf = ref != null && ref.kind == Ref.Kind.GEMARA && ref.daf == null
-            val targets = if (ref != null && !noDaf) try { Jump.resolve(ref) } catch (e: Throwable) { emptyList() } else emptyList()
+            val targets = if (ref != null && !noDaf) try { Jump.resolve(ref, text) } catch (e: Throwable) { emptyList() } else emptyList()
+            // no place in a book – maybe the name of a book or a folder (as they are on the device)
+            val named = if (ref == null) try { Catalog.find(text).filter { it.covered == it.of } } catch (e: Throwable) { emptyList() } else emptyList()
             // not a place in a book (or no such book): the books that contain the words
             val words = if (targets.isEmpty()) try {
                 Search.run(text, Match.ALL, true).takeIf { it.books.isNotEmpty() } ?: Search.run(text, Match.ANY, true)
             } catch (e: Throwable) { null } else null
             ui {
                 if (my != token || isFinishing) return@ui
-                show(text, ref, noDaf, targets, words, auto)
+                show(text, ref, noDaf, targets, words, auto, named)
             }
         }
     }
 
-    private fun show(text: String, ref: Ref?, noDaf: Boolean, targets: List<Jump.Target>, words: Results?, auto: Boolean) {
+    private fun show(text: String, ref: Ref?, noDaf: Boolean, targets: List<Jump.Target>, words: Results?, auto: Boolean, named: List<Catalog.Match> = emptyList()) {
         results.removeAllViews()
         when {
             noDaf -> understood.text = "הבנתי שמדובר במסכת ${ref!!.work} – איזה דף? למשל: \"${ref.work} דף כ״ז עמוד א\""
@@ -152,6 +154,14 @@ class VoiceActivity : BaseActivity() {
             ref != null && targets.isNotEmpty() -> understood.text = "✓ מצאתי לך ${targets.size} אפשרויות ל${ref.label()} – באיזו לפתוח?"
             ref != null -> understood.text = "חיפשתי ${ref.label()} – אבל לא מצאתי ספר כזה במאגר" + (if (Progress.running) " (הסריקה עדיין רצה)" else "")
             else -> understood.text = "חיפוש המילים: \"$text\""
+        }
+        // the request is the name of books / a folder on the device
+        if (named.isNotEmpty()) {
+            understood.text = "📚 מצאתי ${if (named.size == 1) "ספר" else "${named.size} ספרים"} בשם הזה" + if (named.size > 1) " – איזה לפתוח?" else ""
+            for (m in named) results.addView(card("📖 ${m.book.title}", Library.categoryOf(m.book.dir).joinToString(" › ").ifEmpty { "תיקייה ראשית" } + " · ${m.book.pages} עמ׳", true) {
+                ReaderActivity.open(this, m.book.path, Library.lastPage(m.book.path))
+            })
+            if (words != null && words.books.any { b -> b.pages.isNotEmpty() }) results.addView(label("ובתוך הספרים, המילים מופיעות כאן:", 14.5f, Col.SUB, true).apply { setPadding(dp(4), dp(12), dp(4), dp(2)) })
         }
         // no such book: the closest names in the library
         if (ref != null && targets.isEmpty()) {

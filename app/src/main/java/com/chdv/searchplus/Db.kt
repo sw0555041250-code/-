@@ -68,7 +68,7 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "index.db", null,
     @Volatile
     private var cache: Map<Long, Book>? = null
 
-    fun invalidate() { cache = null }
+    fun invalidate() { cache = null; Catalog.invalidate() }
 
     private fun readBook(c: android.database.Cursor) = Book(
         c.getLong(0), c.getString(1), c.getString(2), c.getString(3), c.getLong(4), c.getLong(5),
