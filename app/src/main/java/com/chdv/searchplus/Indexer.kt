@@ -88,6 +88,9 @@ object Indexer {
             val n = doc.numberOfPages
             val st = PageStripper(n)
             st.sortByPosition = Prefs.b("sortByPosition", false)
+            // much faster on big books: skip the search for duplicated overlapping letters and article beads
+            st.suppressDuplicateOverlappingText = false
+            st.setShouldSeparateByBeads(false)
             st.lineSeparator = "\n"
             st.wordSeparator = " "
             st.writeText(doc, st.buf)
@@ -133,7 +136,8 @@ object Indexer {
         known.values.filter { it.path !in found }.forEach { db.removeFile(it.id) }
 
         // 2. read text
-        val pending = db.pendingFiles()
+        // small books first: within minutes most of the library is searchable; big ones follow
+        val pending = db.pendingFiles().sortedBy { (_, p) -> File(p).length() }
         Progress.phase = "קורא ספרים"; Progress.total = pending.size; Progress.done = 0
         for ((id, path) in pending) {
             if (Progress.cancel) return

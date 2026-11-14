@@ -89,17 +89,40 @@ object Prefs {
 }
 
 /** Colours: calm, high contrast, works well on E-ink too. */
+/**
+ * Colours. Two looks: calm high-contrast for E-ink readers (BOOX), and a livelier colourful one for
+ * phones and tablets. Chosen automatically by the device, changeable in the settings.
+ */
 object Col {
-    val BG = 0xFFFFFFFF.toInt()
-    val TEXT = 0xFF111111.toInt()
-    val SUB = 0xFF5A5A5A.toInt()
-    val LINE = 0xFFD6D6D6.toInt()
-    val CARD = 0xFFF4F5F8.toInt()
-    val ACC = 0xFF1B3B6F.toInt()
-    val ACC_LIGHT = 0xFFE6ECF7.toInt()
+    val isEink: Boolean get() = when (Prefs.s("theme", "auto")) {
+        "eink" -> true
+        "color" -> false
+        else -> android.os.Build.MANUFACTURER.equals("ONYX", true) || android.os.Build.BRAND.equals("ONYX", true) || android.os.Build.MODEL.contains("BOOX", true)
+    }
+    private val c get() = !isEink
+    val BG: Int get() = if (c) 0xFFF7F8FC.toInt() else 0xFFFFFFFF.toInt()
+    val TEXT: Int get() = 0xFF111318.toInt()
+    val SUB: Int get() = if (c) 0xFF5B6070.toInt() else 0xFF5A5A5A.toInt()
+    val LINE: Int get() = if (c) 0xFFE1E4EE.toInt() else 0xFFD6D6D6.toInt()
+    val CARD: Int get() = if (c) 0xFFFFFFFF.toInt() else 0xFFF4F5F8.toInt()
+    val ACC: Int get() = if (c) 0xFF3B4FD8.toInt() else 0xFF1B3B6F.toInt()
+    val ACC2: Int get() = if (c) 0xFF7B3FE4.toInt() else 0xFF1B3B6F.toInt()
+    val ACC_LIGHT: Int get() = if (c) 0xFFE8EAFF.toInt() else 0xFFE6ECF7.toInt()
     val GOLD = 0xFFFFD65A.toInt()
     val HL = 0x77FFC800
     val RED = 0xFFB00020.toInt()
+    /** Colours of the feature tiles (voice, meaning, words, books, organize, settings). */
+    val TILES: List<Pair<Int, Int>> get() = if (c) listOf(
+        0xFF3B4FD8.toInt() to 0xFF6F7CFF.toInt(),
+        0xFF7B3FE4.toInt() to 0xFFB06BFF.toInt(),
+        0xFF0E9F8E.toInt() to 0xFF35CDB4.toInt(),
+        0xFFE0712C.toInt() to 0xFFFFA65C.toInt(),
+        0xFFD6336C.toInt() to 0xFFFF6F9B.toInt(),
+        0xFF475066.toInt() to 0xFF7A8499.toInt(),
+    ) else List(6) { 0xFF1B3B6F.toInt() to 0xFF1B3B6F.toInt() }
+
+    fun gradient(a: Int, b: Int, radius: Float): android.graphics.drawable.GradientDrawable =
+        android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR, intArrayOf(a, b)).apply { cornerRadius = radius }
 }
 
 fun scale(): Float = when (Prefs.s("fontSize", "normal")) {
@@ -216,6 +239,7 @@ open class BaseActivity : AppCompatActivity() {
         })
         head.addView(label(title, 21f, Col.TEXT, true).apply { setSingleLine() }, lp(0, WRAP, 1f))
         actions.forEach { head.addView(it) }
+        head.addView(Nav.button(this))
         root.addView(head, lp(MATCH, WRAP))
         root.addView(divider())
         root.addView(body, lp(MATCH, 0, 1f))

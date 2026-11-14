@@ -154,6 +154,12 @@ class SettingsActivity : BaseActivity() {
             }
         }
         if (ow == "external") toggle("העתקת מילות החיפוש בפתיחה", "כדי להדביק אותן בחיפוש של הקורא ולסמן אותן שם", "copyTerms", true)
+        val th = Prefs.s("theme", "auto")
+        item("מראה", when (th) { "color" -> "צבעוני"; "eink" -> "שחור-לבן (E-ink)"; else -> "אוטומטי – " + if (Col.isEink) "שחור-לבן (זוהה מסך E-ink)" else "צבעוני" }) {
+            Sheet.choice(this, "מראה התוכנה", listOf("auto" to "אוטומטי לפי המכשיר", "color" to "צבעוני (טלפון / טאבלט)", "eink" to "שחור-לבן, ניגודיות גבוהה (BOOX)"), th) {
+                Prefs.put("theme", it); recreate()
+            }
+        }
         val fs = Prefs.s("fontSize", "normal")
         item("גודל הכתב", mapOf("small" to "קטן", "normal" to "רגיל", "large" to "גדול", "xlarge" to "גדול מאוד")[fs] ?: "רגיל") {
             Sheet.choice(this, "גודל הכתב", listOf("small" to "קטן", "normal" to "רגיל", "large" to "גדול", "xlarge" to "גדול מאוד"), fs) {

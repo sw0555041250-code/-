@@ -56,7 +56,43 @@ class MainActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
         semantic = Prefs.b("lastSemantic", false)
         build()
+        applyScreen(intent)
     }
+
+    /** Which screen this is: home, "meaning" (question & answer only) or "words" (word search only). */
+    private var screenKind = "home"
+    private lateinit var titleView: TextView
+    private lateinit var subView: TextView
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        applyScreen(intent)
+    }
+
+    private fun applyScreen(i: Intent?) {
+        val k = i?.getStringExtra("screen") ?: return
+        screenKind = k
+        when (k) {
+            "meaning" -> {
+                if (!Semantic.ready(this)) { semantic = false; setMode(true) } else semantic = true
+                titleView.text = "💡 שאלה ותשובה"; subView.text = "שואלים במילים שלך – ומקבלים את המשפט שעונה"
+                input.hint = "שאלו שאלה… למשל: מה מברכים על פרי העץ?"
+            }
+            "words" -> {
+                semantic = false
+                titleView.text = "🔤 חיפוש מילים"; subView.text = "מילה או ביטוי בתוך כל הספרים"
+                input.hint = "מילה או ביטוי… למשל: רבי שמעון"
+            }
+            else -> { titleView.text = "חיפוש פלוס"; subView.text = "חיפוש מעמיק בתוך הספרים שלך"; input.hint = "מה לחפש? או לחצו 🎤 ודברו" }
+        }
+        modeRow.visibility = if (k == "home") View.VISIBLE else View.GONE
+        buildModes()
+        val q = i.getStringExtra("q")
+        if (!q.isNullOrBlank()) { input.setText(q); doSearch() } else if (results == null) showHome()
+    }
+
+    private fun openVoice() = startActivity(Intent(this, VoiceActivity::class.java).putExtra("listen", true))
 
     override fun onResume() {
         super.onResume()
@@ -105,14 +141,17 @@ class MainActivity : BaseActivity() {
 
         // header
         val head = hbox().apply { setPadding(dp(14), dp(10), dp(8), dp(6)) }
-        head.addView(ImageView(this).apply { setImageResource(R.mipmap.ic_launcher) }, lp(dp(38), dp(38)).m(0, 0, 0, 0))
+        // tapping the name ("פלוס") or ☰ opens the side menu with every part of the app
+        head.addView(Nav.button(this))
+        head.addView(ImageView(this).apply { setImageResource(R.mipmap.ic_launcher); setOnClickListener { Nav.open(this@MainActivity) } }, lp(dp(38), dp(38)).m(0, 0, 0, 0))
+        titleView = label("חיפוש פלוס", 22f, Col.TEXT, true)
+        subView = label("חיפוש מעמיק בתוך הספרים שלך", 12.5f, Col.SUB)
         head.addView(vbox().apply {
-            addView(label("חיפוש פלוס", 22f, Col.TEXT, true))
-            addView(label("חיפוש מעמיק בתוך הספרים שלך", 12.5f, Col.SUB))
+            addView(titleView); addView(subView)
             setPadding(dp(10), 0, dp(10), 0)
+            setOnClickListener { Nav.open(this@MainActivity) }
         }, lp(0, WRAP, 1f))
-        head.addView(headerButton("📚 ספרים") { startActivity(Intent(this, BrowseActivity::class.java)) })
-        head.addView(headerButton("🗂 סידור") { startActivity(Intent(this, OrganizeActivity::class.java)) })
+        head.addView(headerButton("🎤") { openVoice() })
         head.addView(headerButton("⚙") { startActivity(Intent(this, SettingsActivity::class.java)) })
         root.addView(head, lp(MATCH, WRAP))
 
@@ -154,7 +193,7 @@ class MainActivity : BaseActivity() {
             setPadding(dp(10), dp(6), dp(10), dp(6))
             background = pressBg(Color.TRANSPARENT, Col.ACC_LIGHT, 18)
             contentDescription = "חיפוש קולי"
-            setOnClickListener { VoiceSearch.start(this@MainActivity) { t -> onVoice(t) } }
+            setOnClickListener { openVoice() }
         })
         box.addView(pill("חיפוש") { doSearch() }, lp(WRAP, WRAP))
         root.addView(box, lp(MATCH, WRAP).m(dp(12), dp(4), dp(12), dp(6)))
@@ -294,32 +333,40 @@ class MainActivity : BaseActivity() {
         // welcome card
         val hero = vbox().apply {
             setPadding(dp(18), dp(16), dp(18), dp(16))
-            background = roundBg(Col.ACC, dp(18).toFloat())
+            background = Col.gradient(Col.ACC, Col.ACC2, dp(18).toFloat())
         }
         val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
         val hello = when (hour) { in 4..11 -> "בוקר טוב!"; in 12..16 -> "צהריים טובים!"; in 17..20 -> "ערב טוב!"; else -> "לילה טוב!" }
         hero.addView(label("$hello מה נלמד היום?", 21f, android.graphics.Color.WHITE, true))
         val heroStats = label("טוען את נתוני המאגר…", 14f, 0xFFDDE6F2.toInt()).apply { setPadding(0, dp(4), 0, dp(12)) }
         hero.addView(heroStats)
-        val quick = hbox()
-        fun q(t: String, onClick: () -> Unit) = label(t, 14.5f, Col.ACC, true).apply {
-            gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER
-            setPadding(dp(6), dp(10), dp(6), dp(10))
-            background = pressBg(android.graphics.Color.WHITE, Col.ACC_LIGHT, 14)
-            setOnClickListener { onClick() }
-        }
-        quick.addView(q("📚 עיון") { startActivity(Intent(this, BrowseActivity::class.java)) }, lp(0, WRAP, 1f).m(dp(3), 0, dp(3), 0))
-        quick.addView(q("💡 שאלה") { setMode(true); input.requestFocus() }, lp(0, WRAP, 1f).m(dp(3), 0, dp(3), 0))
-        quick.addView(q("🗂 סידור") { startActivity(Intent(this, OrganizeActivity::class.java)) }, lp(0, WRAP, 1f).m(dp(3), 0, dp(3), 0))
-        hero.addView(quick, lp(MATCH, WRAP))
         homeBox.addView(hero, lp(MATCH, WRAP).m(0, dp(6), 0, dp(6)))
+
+        // every part of the app, one tap away (also in the side menu ☰)
+        val grid = vbox()
+        Nav.ITEMS.chunked(2).forEachIndexed { r, pair ->
+            val row = hbox()
+            pair.forEachIndexed { c, it ->
+                val (c1, c2) = Col.TILES[(r * 2 + c) % Col.TILES.size]
+                row.addView(vbox().apply {
+                    setPadding(dp(12), dp(12), dp(12), dp(12))
+                    background = Col.gradient(c1, c2, dp(16).toFloat())
+                    addView(label(it.icon, 24f, android.graphics.Color.WHITE))
+                    addView(label(it.title, 16f, android.graphics.Color.WHITE, true))
+                    addView(label(it.sub, 11.5f, 0xEEFFFFFF.toInt()).apply { maxLines = 2 })
+                    setOnClickListener { _ -> it.go(this@MainActivity) }
+                }, lp(0, MATCH, 1f).m(dp(4), dp(4), dp(4), dp(4)))
+            }
+            grid.addView(row, lp(MATCH, WRAP))
+        }
+        homeBox.addView(grid, lp(MATCH, WRAP).m(0, dp(2), 0, dp(4)))
 
         // the big microphone: say what you are looking for
         val mic = vbox().apply {
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(dp(16), dp(18), dp(16), dp(16))
             background = pressBg(Col.BG, Col.ACC_LIGHT, 22, dp(2), Col.ACC)
-            setOnClickListener { VoiceSearch.start(this@MainActivity) { t -> onVoice(t) } }
+            setOnClickListener { openVoice() }
         }
         mic.addView(label("🎤", 46f, Col.ACC, true).apply {
             gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER
@@ -331,9 +378,7 @@ class MainActivity : BaseActivity() {
         val ex = FlowLayout(this).apply { setPadding(0, dp(12), 0, 0) }
         listOf("ברכות דף כ״ז ע״א", "לקוטי שיחות חלק ד עמוד 58", "לקוטי שיחות חלק ד נח", "תניא פרק ה", "מה מברכים על פרי העץ").forEach { e ->
             ex.addView(chip("“$e”", false) {
-                input.setText(e)
-                if (Heb.words(e).firstOrNull() == "מה" && Semantic.ready(this) && !semantic) { semantic = true; buildModes() }
-                doSearch(autoOpen = false)
+                startActivity(Intent(this, VoiceActivity::class.java).putExtra("q", e))
             })
         }
         mic.addView(ex, lp(MATCH, WRAP))
