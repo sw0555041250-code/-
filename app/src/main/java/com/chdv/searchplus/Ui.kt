@@ -94,9 +94,12 @@ object Prefs {
  * phones and tablets. Chosen automatically by the device, changeable in the settings.
  */
 object Col {
-    val isEink: Boolean get() = when (Prefs.s("theme", "auto")) {
+    /** Themes: four colourful ones and black-and-white. "auto" = black-and-white on E-ink readers, blue elsewhere. */
+    val THEMES = listOf("auto" to "אוטומטי לפי המכשיר", "blue" to "🔵 כחול", "green" to "🟢 ירוק", "purple" to "🟣 סגול", "warm" to "🟠 חם (כתום-אדום)", "eink" to "⚫ שחור-לבן, ניגודיות גבוהה")
+    private val theme: String get() = Prefs.s("theme", "auto").let { if (it == "color") "blue" else it }
+    val isEink: Boolean get() = when (theme) {
         "eink" -> true
-        "color" -> false
+        "blue", "green", "purple", "warm" -> false
         else -> android.os.Build.MANUFACTURER.equals("ONYX", true) || android.os.Build.BRAND.equals("ONYX", true) || android.os.Build.MODEL.contains("BOOX", true)
     }
     private val c get() = !isEink
@@ -105,9 +108,16 @@ object Col {
     val SUB: Int get() = if (c) 0xFF5B6070.toInt() else 0xFF5A5A5A.toInt()
     val LINE: Int get() = if (c) 0xFFE1E4EE.toInt() else 0xFFD6D6D6.toInt()
     val CARD: Int get() = if (c) 0xFFFFFFFF.toInt() else 0xFFF4F5F8.toInt()
-    val ACC: Int get() = if (c) 0xFF3B4FD8.toInt() else 0xFF1B3B6F.toInt()
-    val ACC2: Int get() = if (c) 0xFF7B3FE4.toInt() else 0xFF1B3B6F.toInt()
-    val ACC_LIGHT: Int get() = if (c) 0xFFE8EAFF.toInt() else 0xFFE6ECF7.toInt()
+    private val pal: Triple<Int, Int, Int> get() = when {
+        !c -> Triple(0xFF1B3B6F.toInt(), 0xFF1B3B6F.toInt(), 0xFFE6ECF7.toInt())
+        theme == "green" -> Triple(0xFF0B8A6F.toInt(), 0xFF2BB673.toInt(), 0xFFE2F6EE.toInt())
+        theme == "purple" -> Triple(0xFF6A35D4.toInt(), 0xFFC04BD8.toInt(), 0xFFF0E8FF.toInt())
+        theme == "warm" -> Triple(0xFFD4512B.toInt(), 0xFFF29A2E.toInt(), 0xFFFFEEE3.toInt())
+        else -> Triple(0xFF3B4FD8.toInt(), 0xFF7B3FE4.toInt(), 0xFFE8EAFF.toInt())
+    }
+    val ACC: Int get() = pal.first
+    val ACC2: Int get() = pal.second
+    val ACC_LIGHT: Int get() = pal.third
     val GOLD = 0xFFFFD65A.toInt()
     val HL = 0x77FFC800
     val RED = 0xFFB00020.toInt()

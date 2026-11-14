@@ -172,8 +172,8 @@ class SettingsActivity : BaseActivity() {
         }
         if (ow == "external") toggle("העתקת מילות החיפוש בפתיחה", "כדי להדביק אותן בחיפוש של הקורא ולסמן אותן שם", "copyTerms", true)
         val th = Prefs.s("theme", "auto")
-        item("מראה", when (th) { "color" -> "צבעוני"; "eink" -> "שחור-לבן (E-ink)"; else -> "אוטומטי – " + if (Col.isEink) "שחור-לבן (זוהה מסך E-ink)" else "צבעוני" }) {
-            Sheet.choice(this, "מראה התוכנה", listOf("auto" to "אוטומטי לפי המכשיר", "color" to "צבעוני (טלפון / טאבלט)", "eink" to "שחור-לבן, ניגודיות גבוהה (BOOX)"), th) {
+        item("🎨 ערכת נושא", (Col.THEMES.firstOrNull { it.first == th }?.second ?: "כחול") + if (th == "auto") (" – " + if (Col.isEink) "שחור-לבן (זוהה מסך E-ink)" else "כחול") else "") {
+            Sheet.choice(this, "ערכת נושא", Col.THEMES, th) {
                 Prefs.put("theme", it); recreate()
             }
         }

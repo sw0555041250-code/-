@@ -28,7 +28,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: models/_hf
-          key: models-v2
+          key: models-v3
 
       - name: Download models and make reference values
         run: |

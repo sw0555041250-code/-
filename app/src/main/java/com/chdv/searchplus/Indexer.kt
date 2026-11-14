@@ -155,6 +155,9 @@ object Indexer {
             Progress.done++
         }
 
+        // the library has been read once – from now on only new or changed books are read
+        if (!Progress.cancel) Prefs.put("firstScanDone", true)
+
         // 3. meaning index (before OCR: OCR of a big library can take days, and must not hold this back)
         if (Prefs.b("semantic", false) && Semantic.ready(c)) {
             try { Semantic.indexPending(c) } catch (e: Throwable) { Semantic.lastError = e.message ?: e.javaClass.simpleName }

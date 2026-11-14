@@ -18,8 +18,10 @@ os.makedirs(out, exist_ok=True)
 WHISPER = {
     "whisper-base": "Xenova/whisper-base",
     "whisper-small": "Xenova/whisper-small",
+    "whisper-turbo": "onnx-community/whisper-large-v3-turbo",
 }
 for name, repo in WHISPER.items():
+  try:
     for f in ["onnx/encoder_model_quantized.onnx", "onnx/decoder_model_merged_quantized.onnx", "tokenizer.json"]:
         p = hf_hub_download(repo, f, local_dir=os.path.join(out, "_hf", name))
         dst = os.path.join(out, name, os.path.basename(f))
@@ -27,6 +29,8 @@ for name, repo in WHISPER.items():
         if not os.path.exists(dst):
             os.symlink(p, dst)
         print(name, os.path.basename(f), os.path.getsize(p) // 1024 // 1024, "MB")
+  except Exception as e:
+    print("skipped", name, e)
 
 for f in ["onnx/model_quantized.onnx", "tokenizer.json"]:
     p = hf_hub_download("Xenova/multilingual-e5-small", f, local_dir=os.path.join(out, "_hf", "e5"))

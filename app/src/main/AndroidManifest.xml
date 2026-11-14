@@ -75,7 +75,6 @@
         </activity>
         <activity android:name=".BrowseActivity" android:exported="false" />
         <activity android:name=".CloudActivity" android:exported="false" />
-        <activity android:name=".YiddishActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".VoiceActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".SettingsActivity" android:exported="false" />
         <activity android:name=".OrganizeActivity" android:exported="false" />

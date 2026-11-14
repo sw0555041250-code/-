@@ -39,6 +39,24 @@ class MainActivity : BaseActivity() {
     private lateinit var cats: FlowLayout
     private lateinit var summary: TextView
     private lateinit var jumpBar: TextView
+    private lateinit var gate: LinearLayout
+    private lateinit var gateBar: android.widget.ProgressBar
+    private lateinit var gateText: TextView
+    private lateinit var gateSkip: TextView
+    private var gateSkipped = false
+    private var gateShownAt = 0L
+
+    private fun updateGate() {
+        val show = !gateSkipped && Library.hasAccess(this) && Library.roots().isNotEmpty() && !Prefs.b("firstScanDone", false)
+        if (!show) { gate.visibility = View.GONE; return }
+        if (gate.visibility != View.VISIBLE) { gate.visibility = View.VISIBLE; gateShownAt = System.currentTimeMillis() }
+        val reading = Progress.phase == "קורא ספרים" && Progress.total > 0
+        gateBar.isIndeterminate = !reading
+        if (reading) gateBar.progress = (Progress.done * 1000L / Progress.total).toInt()
+        gateText.text = if (Progress.running) Progress.text() else "מתחיל…"
+        // a way out after a while (e.g. a library so big that it takes all night)
+        if (System.currentTimeMillis() - gateShownAt > 60_000) gateSkip.visibility = View.VISIBLE
+    }
     private lateinit var optScroll: View
 
     /** The rows that only matter for results; hidden at home so a small phone screen has room to scroll. */
@@ -105,10 +123,14 @@ class MainActivity : BaseActivity() {
     override fun onResume() {
         super.onResume()
         refreshSetup()
-        if (Library.hasAccess(this) && Library.roots().isNotEmpty() && !Progress.running &&
-            System.currentTimeMillis() - Progress.lastFinished > 10 * 60 * 1000 && Prefs.b("autoScan", true)) {
+        // the library is read once; afterwards only a quick check for new books, once a day
+        val first = !Prefs.b("firstScanDone", false)
+        val due = System.currentTimeMillis() - Prefs.l("lastAutoScan", 0L) > 24L * 3600 * 1000
+        if (Library.hasAccess(this) && Library.roots().isNotEmpty() && !Progress.running && (first || (due && Prefs.b("autoScan", true)))) {
+            Prefs.put("lastAutoScan", System.currentTimeMillis())
             Indexer.start(this)
         }
+        updateGate()
         Updater.dailyCheck(this)
         checkLastExit()
         val crash = File(filesDir, "crash.txt")
@@ -132,6 +154,7 @@ class MainActivity : BaseActivity() {
     private val tick = object : Runnable {
         override fun run() {
             val t = Progress.text()
+            if (gate.visibility == View.VISIBLE || !Prefs.b("firstScanDone", false)) updateGate()
             if (t.isEmpty()) {
                 status.visibility = View.GONE
             } else {
@@ -241,7 +264,31 @@ class MainActivity : BaseActivity() {
         home = ScrollView(this).apply { addView(homeBox) }
         stack.addView(home, android.widget.FrameLayout.LayoutParams(MATCH, MATCH))
         root.addView(stack, lp(MATCH, 0, 1f))
-        setContentView(root)
+        // first time: a full screen until the whole library has been read once
+        gate = vbox().apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(28), dp(28), dp(28), dp(28))
+            background = Col.gradient(Col.ACC, Col.ACC2, 0f)
+            isClickable = true
+            visibility = View.GONE
+        }
+        gate.addView(label("📚", 64f, Color.WHITE).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER })
+        gate.addView(label("לומד את הספרייה שלך", 26f, Color.WHITE, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER; setPadding(0, dp(12), 0, dp(8)) })
+        gate.addView(label("פעם אחת בלבד: התוכנה קוראת כל ספר ושומרת את מה שכתוב בו. אחר כך כל חיפוש מיידי, ולא סורקים שוב – רק ספרים חדשים.\nכדאי לחבר לטעינה. אפשר לכבות את המסך – העבודה ממשיכה.", 15.5f, 0xEEFFFFFF.toInt()).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER })
+        gateBar = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 1000; progress = 0 }
+        gate.addView(gateBar, lp(MATCH, dp(18)).m(0, dp(24), 0, dp(10)))
+        gateText = label("מתחיל…", 16f, Color.WHITE, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }
+        gate.addView(gateText, lp(MATCH, WRAP))
+        gateSkip = label("להשתמש בינתיים בספרים שכבר נקראו ›", 14f, 0xCCFFFFFF.toInt()).apply {
+            gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER; setPadding(0, dp(28), 0, 0)
+            visibility = View.GONE
+            setOnClickListener { gateSkipped = true; updateGate() }
+        }
+        gate.addView(gateSkip, lp(MATCH, WRAP))
+        val frame = android.widget.FrameLayout(this)
+        frame.addView(root, android.widget.FrameLayout.LayoutParams(MATCH, MATCH))
+        frame.addView(gate, android.widget.FrameLayout.LayoutParams(MATCH, MATCH))
+        setContentView(frame)
     }
 
     private fun buildModes() {
