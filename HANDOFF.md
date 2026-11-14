@@ -15,6 +15,9 @@
 - ABI: רק `arm64-v8a` (כדי שה-APK יהיה קטן). למכשיר 32 ביט – להוסיף `armeabi-v7a` ב-`app/build.gradle.kts`.
 - ספריות: androidx core/appcompat/recyclerview, ‏`com.tom-roush:pdfbox-android` (חילוץ טקסט ומיקום אותיות), ‏`com.microsoft.onnxruntime:onnxruntime-android` (מודל המשמעות), ‏`cz.adaptech.tesseract4android` (OCR, מ-JitPack).
 
+## מדריך וסרטון
+`docs/guide/guide.html` (המדריך, מודפס ל-PDF) ו-`docs/video/` (תסריט `script.json`, סצנות `video.html`, קריינות עברית `make_audio.py` עם edge-tts, הקלטה `record.js`). כל שינוי בהם ב-`main` מפעיל את `.github/workflows/make-media.yml`, שמפרסם את `SearchPlus-Guide.pdf` ו-`SearchPlus-Video.mp4` ב-Release בשם `media` (prerelease – לא משפיע על העדכונים).
+
 ## מודול core (Kotlin טהור, נבדק בלי אנדרואיד)
 | קובץ | תפקיד |
 |---|---|
