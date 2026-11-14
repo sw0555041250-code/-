@@ -1,0 +1,50 @@
+name: Website (GitHub Pages)
+
+on:
+  push:
+    branches: [main]
+    paths: ['docs/site/**', 'docs/guide/fonts/**', '.github/workflows/site.yml']
+  workflow_run:
+    workflows: ['Make guide PDF and video']
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the site
+        run: |
+          mkdir -p _site/fonts
+          cp docs/site/index.html _site/
+          cp docs/guide/fonts/*.woff2 _site/fonts/
+          cp docs/icon.png _site/icon.png
+          # the video and a poster frame, from the media release
+          curl -sSL -f -o _site/SearchPlus-Video.mp4 https://github.com/sw0555041250-code/Search-Plus-/releases/download/media/SearchPlus-Video.mp4 || true
+          if [ -s _site/SearchPlus-Video.mp4 ]; then sudo apt-get install -y -qq ffmpeg > /dev/null && ffmpeg -v error -y -ss 30 -i _site/SearchPlus-Video.mp4 -frames:v 1 -q:v 3 _site/poster.jpg; fi
+          ls -la _site
+
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
