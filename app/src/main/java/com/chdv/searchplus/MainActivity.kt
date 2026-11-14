@@ -39,6 +39,14 @@ class MainActivity : BaseActivity() {
     private lateinit var cats: FlowLayout
     private lateinit var summary: TextView
     private lateinit var jumpBar: TextView
+    private lateinit var optScroll: View
+
+    /** The rows that only matter for results; hidden at home so a small phone screen has room to scroll. */
+    private fun searchChrome(on: Boolean) {
+        val v = if (on) View.VISIBLE else View.GONE
+        optScroll.visibility = v; crumbs.visibility = v; cats.visibility = v; summary.visibility = v
+        if (!on) jumpBar.visibility = View.GONE
+    }
     private lateinit var list: RecyclerView
     private lateinit var home: ScrollView
     private lateinit var homeBox: LinearLayout
@@ -201,10 +209,11 @@ class MainActivity : BaseActivity() {
         modeRow = hbox().apply { setPadding(dp(12), 0, dp(12), 0) }
         root.addView(modeRow, lp(MATCH, WRAP))
         optRow = hbox().apply { setPadding(dp(12), dp(6), dp(12), 0) }
-        root.addView(android.widget.HorizontalScrollView(this).apply {
+        optScroll = android.widget.HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
             addView(optRow)
-        }, lp(MATCH, WRAP))
+        }
+        root.addView(optScroll, lp(MATCH, WRAP))
         buildModes()
 
         crumbs = FlowLayout(this).apply { setPadding(dp(12), dp(8), dp(12), 0); gap = dp(2) }
@@ -327,6 +336,7 @@ class MainActivity : BaseActivity() {
     private fun showHome() {
         list.visibility = View.GONE
         home.visibility = View.VISIBLE
+        searchChrome(false)
         crumbs.removeAllViews(); cats.removeAllViews()
         summary.text = ""
         homeBox.removeAllViews()
@@ -355,7 +365,7 @@ class MainActivity : BaseActivity() {
                     addView(label(it.title, 16f, android.graphics.Color.WHITE, true))
                     addView(label(it.sub, 11.5f, 0xEEFFFFFF.toInt()).apply { maxLines = 2 })
                     setOnClickListener { _ -> it.go(this@MainActivity) }
-                }, lp(0, MATCH, 1f).m(dp(4), dp(4), dp(4), dp(4)))
+                }, lp(0, WRAP, 1f).m(dp(4), dp(4), dp(4), dp(4)))
             }
             grid.addView(row, lp(MATCH, WRAP))
         }
@@ -453,6 +463,7 @@ class MainActivity : BaseActivity() {
         prefix = emptyList()
         expanded.clear()
         home.visibility = View.GONE
+        searchChrome(true)
         list.visibility = View.VISIBLE
         summary.text = if (semantic) "מחפש לפי משמעות… (בפעם הראשונה זה לוקח כמה שניות)" else "מחפש…"
         crumbs.removeAllViews(); cats.removeAllViews()

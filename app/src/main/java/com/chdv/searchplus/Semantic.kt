@@ -271,6 +271,57 @@ object Semantic {
         return cand.maxByOrNull { dot(q, embed(c, "passage: $it", 80)) }
     }
 
+    /**
+     * The deep understanding model (bge-m3, ~570MB, optional): reads the candidate sentences in their
+     * context and picks the one that really answers. Slower, much more accurate; used only for the
+     * final choice of the answer, so it stays fast enough on the device.
+     */
+    object Deep {
+        private const val REPO = "https://huggingface.co/Xenova/bge-m3/resolve/main/"
+        fun dir(c: Context): File = File(VoiceModels.dir(c, "x").parentFile, "bge-m3")
+        private fun model(c: Context) = File(dir(c), "model_quantized.onnx")
+        private fun tok(c: Context) = File(dir(c), "tokenizer.json")
+        private fun vocab(c: Context) = File(dir(c), "vocab.bin")
+        fun ready(c: Context) = model(c).length() > 300_000_000 && vocab(c).length() > 1_000_000
+        fun on(c: Context) = ready(c) && Prefs.b("deep", true)
+
+        fun download(c: Context, progress: (String) -> Unit) {
+            dir(c).mkdirs()
+            if (vocab(c).length() < 1_000_000) {
+                Net.download(REPO + "tokenizer.json", tok(c)) { progress("מוריד מילון… $it%") }
+                E5Tokenizer.compile(tok(c), vocab(c)); tok(c).delete()
+            }
+            if (model(c).length() < 300_000_000) Net.download(REPO + "onnx/model_quantized.onnx", model(c)) { progress("מוריד את מודל ההבנה… $it%") }
+            progress("בודק את המודל…")
+            close()
+            use(c) { it.embed("בדיקה") }
+            close()
+        }
+
+        fun delete(c: Context) { close(); dir(c).deleteRecursively() }
+
+        private var m: E5Model? = null
+
+        @Synchronized
+        fun <T> use(c: Context, f: (E5Model) -> T): T {
+            val mm = m ?: run {
+                Semantic.close(); VoiceModels.Engine.release(); System.gc()
+                if (VoiceModels.freeMemoryMb(c) < 700) throw IllegalStateException("אין מספיק זיכרון פנוי למודל ההבנה")
+                E5Model(OrtEnvironment.getEnvironment(), model(c).absolutePath, E5Tokenizer.load(vocab(c)), max(1, min(4, Runtime.getRuntime().availableProcessors())), cls = true, lowMemory = true)
+            }.also { m = it }
+            return f(mm)
+        }
+
+        @Synchronized
+        fun close() { try { m?.close() } catch (e: Exception) {}; m = null }
+
+        /** Best of the sentences for the question, with its score (cosine). */
+        fun best(c: Context, question: String, sentences: List<String>): Pair<String, Float>? = use(c) { mm ->
+            val q = mm.embed(question, 96)
+            sentences.map { sn -> val v = mm.embed(sn, 128); sn to q.indices.fold(0f) { acc, i -> acc + q[i] * v[i] } }.maxByOrNull { it.second }
+        }
+    }
+
     fun vectorCount(c: Context): Long = vectorsFile(c).length() / REC
 
     class Answer(val text: String, val pageId: Long, val score: Float)
@@ -293,6 +344,16 @@ object Semantic {
         }
         // compare only the sentences most likely to answer (each comparison costs time on the device)
         val pick = sents.sortedByDescending { (s, _) -> kw.count { s.contains(it) } }.take(20)
+        if (Deep.on(c)) try {
+            // the deep model reads each candidate sentence together with its neighbour, for context
+            val withCtx = pick.map { (sn, _) -> sn }
+            val r = Deep.best(c, question, withCtx)
+            Deep.close()
+            if (r != null) {
+                val pid = pick.first { it.first == r.first }.second
+                return Answer(r.first, pid, r.second).takeIf { it.score > 0.45f }
+            }
+        } catch (e: Throwable) { Deep.close(); lastError = "מודל ההבנה: " + (e.message ?: e.javaClass.simpleName) }
         var best: Answer? = null
         for ((sn, pid) in pick) {
             val d = dot(q, embed(c, "passage: $sn", 80))

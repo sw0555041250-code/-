@@ -25,6 +25,8 @@ object Nav {
         Item("🔤", "חיפוש מילים", "מילה או ביטוי בתוך כל הספרים", { a -> a.startActivity(Intent(a, MainActivity::class.java).putExtra("screen", "words").addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)) }),
         Item("📚", "עיון בספרים", "תיקיות וקטגוריות", { a -> a.startActivity(Intent(a, BrowseActivity::class.java)) }),
         Item("🗂", "סידור המאגר", "כפולים · סידור תיקיות · שמות חכמים", { a -> a.startActivity(Intent(a, OrganizeActivity::class.java)) }),
+        Item("☁", "ספרים מ-Google Drive", "מביאים את המאגר מהענן ומחפשים בו", { a -> a.startActivity(Intent(a, CloudActivity::class.java)) }),
+        Item("🗣", "לימוד יידיש", "פירוש מילים ביידיש לעברית", { a -> a.startActivity(Intent(a, YiddishActivity::class.java)) }),
         Item("⚙", "הגדרות", "מודלים · פתיחת ספרים · עדכונים", { a -> a.startActivity(Intent(a, SettingsActivity::class.java)) }),
     )
 

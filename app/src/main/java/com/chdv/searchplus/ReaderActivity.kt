@@ -329,6 +329,10 @@ class ReaderActivity : BaseActivity() {
                 val on = Library.toggleFavorite(key); toast(if (on) "נוסף למועדפים" else "הוסר מהמועדפים")
             })
             items.add("העתקת הטקסט של העמוד" to { copyPage() })
+            items.add("🗣 פירוש יידיש לעמוד הזה" to {
+                val t = Db.get().bookByPath(p)?.let { Db.get().pageText(it.id, page) }
+                if (t.isNullOrBlank()) toast("אין טקסט שמור לעמוד הזה") else startActivity(Intent(this, YiddishActivity::class.java).putExtra("text", t))
+            })
             items.add("שיתוף הקובץ" to {
                 val i = Intent(Intent.ACTION_SEND).setType("application/pdf")
                     .putExtra(Intent.EXTRA_STREAM, Library.uriFor(this, File(p)))

@@ -34,7 +34,7 @@ jobs:
         run: |
           sudo apt-get install -y -qq ffmpeg > /dev/null
           pip install -q numpy huggingface_hub tokenizers onnxruntime edge-tts
-          python tools/make_reference.py models
+          python tools/make_reference.py models 2>&1 | tee models_log.txt
 
       - name: Run tests
         env:
@@ -43,3 +43,11 @@ jobs:
           # only the core module (no Android SDK needed)
           sed -i 's/^include(":app")$//' settings.gradle.kts
           gradle :core:test --no-daemon --stacktrace
+
+      - name: Summary (results of the model tests)
+        if: always()
+        run: |
+          for f in core/build/test-results/test/*.xml; do
+            grep -h -E "cos=|understood|\] (OK|BAD)|quiet|peak|good=|load |failure message|skipped|AssertionError|Exception" "$f" | sed 's/&quot;/"/g; s/&lt;/</g; s/&gt;/>/g' | cut -c1-300 | head -60
+          done
+          grep -h -E "bge|skipped" models_log.txt 2>/dev/null || true

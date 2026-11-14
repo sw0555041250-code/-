@@ -123,6 +123,23 @@ class SettingsActivity : BaseActivity() {
             Sheet.info(this, "בונים את אינדקס המשמעות", "הבנייה רצה ברקע ומציגה כמה זמן נשאר.\n\n• חברו את המכשיר לטעינה.\n• ב-BOOX: הגדרות › אפליקציות › ניהול אפליקציות › חיפוש פלוס – כבו \"הקפאה\" / אפשרו ריצה ברקע, כדי שהמכשיר לא יעצור את העבודה בלילה.\n• אפשר להמשיך לחפש בזמן הבנייה.")
             Indexer.start(this)
         }
+        val dReady = Semantic.Deep.ready(this)
+        item(if (dReady) "🧠 מודל ההבנה העמוק מותקן ✓" else "🧠 מודל הבנה עמוק – תשובות מדויקות יותר (כ-570MB)",
+            if (dReady) "קורא את המשפטים בהקשר ובוחר את התשובה האמיתית · לחיצה לניהול"
+            else "מודל גדול (BGE-M3) שמבין עברית לעומק. נטען רק לבחירת התשובה. מומלץ במכשיר עם 3GB זיכרון ומעלה; ב-BOOX עלול להיות איטי") {
+            if (!dReady) {
+                val st = label("מתחיל…", 15f, Col.SUB)
+                val d = Sheet.make(this, vbox().apply { setPadding(dp(18), dp(18), dp(18), dp(18)); addView(label("מוריד את מודל ההבנה", 18f, Col.TEXT, true)); addView(st) })
+                d.setCancelable(false); d.show()
+                bg.execute {
+                    try { Semantic.Deep.download(this) { t -> ui { st.text = t } }; ui { d.dismiss(); toast("הותקן ✓"); render() } }
+                    catch (e: Throwable) { ui { d.dismiss(); Sheet.info(this, "ההורדה או הבדיקה נכשלו", (e.message ?: e.javaClass.simpleName) + "\n\nמה שכבר ירד נשמר – אפשר לנסות שוב.") } }
+                }
+            } else Sheet.actions(this, "מודל ההבנה העמוק", listOf(
+                (if (Prefs.b("deep", true)) "כיבוי (להשתמש רק במודל הקל)" else "הפעלה") to { Prefs.put("deep", !Prefs.b("deep", true)); render() },
+                "מחיקת המודל" to { Semantic.Deep.delete(this); render() },
+            ))
+        }
         toggle("בניית אינדקס משמעות ברקע", "כבוי = החיפוש לפי משמעות מבוטל ולא נבנה אינדקס", "semantic", false) { on ->
             if (on && Semantic.ready(this)) Indexer.start(this)
         }
