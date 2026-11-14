@@ -61,7 +61,8 @@ jobs:
 
       - name: Show compile errors
         if: failure()
-        run: grep -E "^e: |error:|What went wrong" -A2 build.log | head -80 || true
+        run: |
+          grep -E "^e: |error:|What went wrong" -A2 build.log | head -80 || true
 
       - name: Publish build log on failure
         if: failure() && github.ref == 'refs/heads/main'
