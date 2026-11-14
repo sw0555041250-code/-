@@ -11,7 +11,7 @@ import sys
 import edge_tts
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-out = sys.argv[1]
+out = os.path.abspath(sys.argv[1])
 os.makedirs(out, exist_ok=True)
 scenes = json.load(open(os.path.join(HERE, "script.json"), encoding="utf-8"))
 VOICE = os.environ.get("VOICE", "he-IL-AvriNeural")
