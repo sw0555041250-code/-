@@ -1,0 +1,85 @@
+name: Make guide PDF and video
+
+on:
+  push:
+    branches: [main]
+    paths: ['docs/video/**', 'docs/guide/**', '.github/workflows/make-media.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  media:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Tools
+        run: |
+          sudo apt-get install -y -qq ffmpeg > /dev/null
+          pip install -q edge-tts
+          npm init -y > /dev/null
+          npm install playwright@1.47.2 > /dev/null
+          npx playwright install --with-deps chromium > /dev/null
+
+      - name: Narration (Hebrew voice)
+        run: python docs/video/make_audio.py out
+
+      - name: Record the screens
+        run: |
+          cp -r node_modules docs/video/ 2>/dev/null || true
+          node docs/video/record.js out/durations.json out
+
+      - name: Video = screens + narration
+        run: |
+          LEAD=$(cat out/lead_ms.txt)
+          WEBM=$(ls out/*.webm | head -1)
+          ffmpeg -v error -y -ss $(python -c "print($LEAD/1000)") -i "$WEBM" -i out/narration.wav \
+            -c:v libx264 -preset slow -crf 20 -pix_fmt yuv420p -r 30 -c:a aac -b:a 160k -shortest -movflags +faststart SearchPlus-Video.mp4
+          ls -la SearchPlus-Video.mp4
+
+      - name: Guide PDF
+        run: |
+          cat > pdf.js <<'EOF'
+          const { chromium } = require('playwright');
+          (async () => {
+            const b = await chromium.launch();
+            const p = await b.newPage();
+            await p.goto('file://' + process.cwd() + '/docs/guide/guide.html');
+            await p.evaluate(() => document.fonts.ready);
+            await p.pdf({ path: 'SearchPlus-Guide.pdf', format: 'A4', printBackground: true, preferCSSPageSize: true });
+            await b.close();
+          })();
+          EOF
+          node pdf.js
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: media
+          path: |
+            SearchPlus-Video.mp4
+            SearchPlus-Guide.pdf
+
+      - name: Publish (separate from the app updates – not "latest")
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: media
+          name: מדריך וסרטון – חיפוש פלוס
+          body: |
+            📄 SearchPlus-Guide.pdf – מדריך מלא לתוכנה
+            🎬 SearchPlus-Video.mp4 – סרטון הסבר
+            להורדת התוכנה: https://github.com/sw0555041250-code/Search-Plus-/releases/latest/download/SearchPlus.apk
+          files: |
+            SearchPlus-Video.mp4
+            SearchPlus-Guide.pdf
+          prerelease: true
+          make_latest: false

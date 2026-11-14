@@ -8,6 +8,8 @@
 
 ## ⬇️ הורדה
 
+> 📄 **[מדריך מלא (PDF)](https://github.com/sw0555041250-code/Search-Plus-/releases/download/media/SearchPlus-Guide.pdf)** · 🎬 **[סרטון הסבר](https://github.com/sw0555041250-code/Search-Plus-/releases/download/media/SearchPlus-Video.mp4)**
+
 **[להורדת הקובץ SearchPlus.apk מהגרסה האחרונה](https://github.com/sw0555041250-code/Search-Plus-/releases/latest/download/SearchPlus.apk)**
 
 (כל הגרסאות: [עמוד ה-Releases](https://github.com/sw0555041250-code/Search-Plus-/releases))

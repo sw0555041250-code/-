@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>חיפוש פלוס – מדריך</title>
+<style>
+@font-face { font-family: Heebo; src: url(fonts/heebo-hebrew.woff2) format("woff2"); font-weight: 100 900; unicode-range: U+0590-05FF, U+200C-2010, U+20AA, U+25CC, U+FB1D-FB4F; }
+@font-face { font-family: Heebo; src: url(fonts/heebo-latin.woff2) format("woff2"); font-weight: 100 900; }
+@page { size: A4; margin: 0; }
+:root { --acc: #1B3B6F; --acc2: #2C5BA8; --light: #E6ECF7; --gold: #F2C14E; --ink: #121417; --sub: #575c66; --card: #F4F5F8; --line: #D9DCE3; }
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Heebo, sans-serif; color: var(--ink); background: #fff; font-size: 11.6pt; line-height: 1.5; }
+.page { width: 210mm; height: 297mm; padding: 15mm 17mm 20mm; position: relative; page-break-after: always; overflow: hidden; }
+.page:last-child { page-break-after: auto; }
+.foot { position: absolute; bottom: 8mm; left: 17mm; right: 17mm; display: flex; justify-content: space-between; color: var(--sub); font-size: 9pt; border-top: 1px solid var(--line); padding-top: 3mm; }
+h1 { font-size: 40pt; font-weight: 900; margin: 0; line-height: 1.05; letter-spacing: -0.5px; }
+h2 { font-size: 21pt; font-weight: 900; margin: 0 0 4mm; color: var(--acc); display: flex; align-items: center; gap: 3mm; }
+h2 .n { background: var(--acc); color: #fff; border-radius: 50%; width: 11mm; height: 11mm; display: inline-flex; align-items: center; justify-content: center; font-size: 15pt; flex: none; }
+h3 { font-size: 13.5pt; margin: 5mm 0 1.5mm; font-weight: 800; }
+p { margin: 0 0 2.5mm; }
+ul, ol { margin: 0 0 3mm; padding-right: 6mm; }
+li { margin-bottom: 1.2mm; }
+.lead { font-size: 14pt; color: var(--sub); }
+.box { background: var(--card); border: 1px solid var(--line); border-radius: 4mm; padding: 4mm 5mm; margin: 3mm 0; }
+.tip { background: #FFF6DA; border: 1px solid #E8C55C; border-radius: 4mm; padding: 3.5mm 5mm; margin: 3mm 0; }
+.say { font-size: 10.5pt; display: inline-block; background: var(--light); color: var(--acc); border: 1px solid #c3d0ea; border-radius: 10mm; padding: .6mm 3.5mm; margin: .8mm .5mm; font-weight: 700; white-space: nowrap; }
+.cols { display: flex; gap: 8mm; align-items: flex-start; }
+.cols > .grow { flex: 1; }
+table { width: 100%; border-collapse: collapse; font-size: 11.5pt; }
+td, th { border-bottom: 1px solid var(--line); padding: 2mm 1.5mm; text-align: right; vertical-align: top; }
+th { color: var(--acc); }
+
+/* cover */
+.cover { background: linear-gradient(160deg, #1B3B6F 0%, #2C5BA8 60%, #3C74C9 100%); color: #fff; }
+.cover .lead { color: #dbe6f7; }
+.badge { display: inline-block; background: var(--gold); color: #1d1d1d; font-weight: 800; border-radius: 10mm; padding: 1mm 4mm; font-size: 11pt; }
+.feat { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin-top: 8mm; }
+.feat div { background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.25); border-radius: 4mm; padding: 4mm; font-size: 11.5pt; }
+.feat b { display: block; font-size: 13.5pt; margin-bottom: 1mm; }
+
+/* phone mockups */
+.phone { color: var(--ink); width: 64mm; flex: none; border: 2.2mm solid #222; border-radius: 6mm; background: #fff; overflow: hidden; box-shadow: 0 2mm 6mm rgba(0,0,0,.18); font-size: 7.6pt; line-height: 1.35; }
+.cover .phone { border-color: #0d1b33; }
+.ph-head { display: flex; align-items: center; gap: 1.6mm; padding: 2.2mm 2.4mm 1.4mm; }
+.ph-logo { width: 6mm; height: 6mm; border-radius: 1.6mm; background: var(--acc); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 8pt; }
+.ph-title { font-weight: 900; font-size: 10pt; color: var(--ink); }
+.ph-sub { color: var(--sub); font-size: 6.4pt; }
+.ph-btn { margin-right: auto; color: var(--acc); font-weight: 700; font-size: 7pt; }
+.ph-search { margin: 1mm 2.2mm 1.4mm; border: .45mm solid var(--acc); border-radius: 5mm; background: var(--card); display: flex; align-items: center; padding: .8mm 1mm .8mm 2.4mm; gap: 1mm; color: var(--ink); }
+.ph-search .q { flex: 1; font-size: 8.4pt; font-weight: 500; }
+.ph-search .hint { color: #8a8a8a; }
+.ph-search .mic { font-size: 9pt; }
+.ph-search .go { background: var(--acc); color: #fff; border-radius: 4mm; padding: .7mm 2.2mm; font-weight: 700; font-size: 7pt; }
+.ph-modes { display: flex; gap: 1mm; padding: 0 2.2mm; }
+.ph-modes span { flex: 1; text-align: center; border-radius: 3mm; padding: .8mm 0; background: var(--card); border: .25mm solid var(--line); font-size: 6.8pt; }
+.ph-modes .on { background: var(--acc); color: #fff; border-color: var(--acc); font-weight: 700; }
+.ph-body { padding: 1.6mm 2.2mm 2.4mm; }
+.ph-hero { background: var(--acc); color: #fff; border-radius: 3mm; padding: 2.2mm 2.6mm; }
+.ph-hero b { font-size: 9pt; }
+.ph-mic { margin-top: 1.8mm; border: .5mm solid var(--acc); border-radius: 3.5mm; padding: 2.2mm; text-align: center; }
+.ph-mic .circle { width: 13mm; height: 13mm; border-radius: 50%; background: var(--light); border: .6mm solid var(--acc); margin: 0 auto 1mm; display: flex; align-items: center; justify-content: center; font-size: 15pt; }
+.ph-mic b { font-size: 9pt; display: block; }
+.chips span { display: inline-block; background: var(--card); border: .25mm solid var(--line); border-radius: 3mm; padding: .4mm 1.6mm; margin: .5mm .3mm; font-size: 6.4pt; }
+.ph-jump { background: var(--acc); color: #fff; border-radius: 2.4mm; padding: 1.6mm 2.2mm; font-weight: 700; margin: 1.2mm 0; }
+.ph-row { border-bottom: .25mm solid var(--line); padding: 1.6mm .6mm; }
+.ph-row .t { font-weight: 800; font-size: 8pt; display: flex; justify-content: space-between; }
+.ph-row .t i { font-style: normal; background: var(--acc); color: #fff; border-radius: 2mm; padding: 0 1.4mm; font-size: 6.6pt; }
+.ph-row .f { color: var(--sub); font-size: 6.3pt; }
+.ph-snip { background: var(--card); padding: 1.4mm 2.4mm 1.4mm 1mm; font-size: 7pt; border-bottom: .25mm solid var(--line); }
+.ph-snip .pg { color: var(--acc); font-weight: 700; }
+mark { background: #FFE38A; font-weight: 800; text-decoration: underline; padding: 0 .3mm; }
+.ph-answer { background: #FFF7DD; border: .4mm solid #D8B040; border-radius: 2.6mm; padding: 1.8mm 2.2mm; margin: 1mm 0 1.6mm; }
+.ph-answer .h { color: var(--acc); font-weight: 800; font-size: 7pt; }
+.ph-answer .src { color: var(--acc); font-weight: 700; font-size: 6.6pt; }
+.ph-sheet { margin-top: 2mm; border: .3mm solid var(--line); border-radius: 3mm; padding: 2.4mm; box-shadow: 0 -1mm 3mm rgba(0,0,0,.08); }
+.ph-sheet b { font-size: 9pt; }
+.ph-bar { height: 2.4mm; border-radius: 1.2mm; background: var(--card); border: .25mm solid var(--line); margin: 1.6mm 0; overflow: hidden; }
+.ph-bar i { display: block; height: 100%; width: 62%; background: var(--acc); }
+.ph-page { margin: 1mm 0; border: .25mm solid var(--line); height: 55mm; padding: 2mm; font-size: 6pt; color: #333; text-align: justify; position: relative; background: #fff; }
+.ph-page .hdr { text-align: center; font-weight: 800; font-size: 7pt; border-bottom: .2mm solid #999; margin-bottom: 1mm; }
+.ph-refbar { background: var(--light); color: var(--acc); font-weight: 800; padding: 1.2mm 2mm; display: flex; justify-content: space-between; font-size: 7pt; }
+.caption { font-size: 9.5pt; color: var(--sub); text-align: center; margin-top: 2mm; }
+</style>
+</head>
+<body>
+
+<!-- ================= COVER ================= -->
+<section class="page cover">
+  <span class="badge">BOOX Go 6 · אנדרואיד · בלי אינטרנט</span>
+  <div class="cols" style="margin-top: 10mm">
+    <div class="grow">
+      <h1>חיפוש<br>פלוס 🔍</h1>
+      <p class="lead" style="font-size: 16pt; margin-top: 5mm">אומרים מה מחפשים –<br>והספר נפתח בדיוק במקום.</p>
+      <p style="margin-top: 6mm; font-size: 13pt">חיפוש מעמיק בתוך כל ספרי ה-PDF שבמכשיר ובכרטיס הזיכרון: לפי מילים, לפי משמעות, ובקול. הבינה המלאכותית רצה בתוך המכשיר עצמו.</p>
+    </div>
+    <div class="phone" style="margin-top: 2mm">
+      <div class="ph-head"><div class="ph-logo">פ+</div><div><div class="ph-title">חיפוש פלוס</div><div class="ph-sub">חיפוש מעמיק בתוך הספרים שלך</div></div><div class="ph-btn">📚 ⚙</div></div>
+      <div class="ph-search"><span class="q hint">מה לחפש? או לחצו 🎤 ודברו</span><span class="mic">🎤</span><span class="go">חיפוש</span></div>
+      <div class="ph-modes"><span class="on">🔤 חיפוש מילים</span><span>💡 לפי משמעות</span></div>
+      <div class="ph-body">
+        <div class="ph-hero"><b>בוקר טוב! מה נלמד היום?</b><div style="opacity:.85">במאגר 4,812 ספרים · 1,206,330 עמודים</div></div>
+        <div class="ph-mic"><div class="circle">🎤</div><b>לחצו ודברו</b><span style="color:var(--sub)">אומרים מה מחפשים – והספר נפתח במקום</span>
+          <div class="chips" style="margin-top:1mm"><span>“ברכות דף כ״ז ע״א”</span><span>“לקוטי שיחות חלק ד עמוד 58”</span><span>“מה מברכים על פרי העץ”</span></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="feat">
+    <div><b>🎤 חיפוש קולי</b>"ברכות דף כ״ז עמוד א" – וכל מהדורות הגמרא שלך נפתחות בדף.</div>
+    <div><b>💡 שאלה ותשובה</b>כותבים שאלה במילים שלך ומקבלים את המשפט שעונה – עם המקור.</div>
+    <div><b>🔤 חיפוש מילים</b>בתוך הספרים, לא רק בשמות. כולל ו׳ ה׳ ב׳ ל׳, כוכבית, ביטוי מדויק.</div>
+    <div><b>📖 נפתח במקום</b>בעמוד הנכון עם המילים מסומנות – או באפליקציה שתבחרו.</div>
+  </div>
+  <div class="foot" style="color:#cfdcf2; border-color: rgba(255,255,255,.3)"><span>פותח על ידי שניאור וילהלם · מופץ לתועלת הרבים</span><span dir="ltr">github.com/sw0555041250-code/Search-Plus-</span></div>
+</section>
+
+<!-- ================= INSTALL ================= -->
+<section class="page">
+  <h2><span class="n">1</span>התקנה – שתי דקות</h2>
+  <div class="cols">
+    <div class="grow">
+      <ol>
+        <li>במכשיר, פותחים את הקישור:<br><b dir="ltr" style="font-size:10.5pt">github.com/sw0555041250-code/Search-Plus-/releases/latest/download/SearchPlus.apk</b></li>
+        <li>פותחים את הקובץ שירד ומתקינים. אם מופיעה הודעה על "מקורות לא ידועים" – מאשרים וחוזרים.</li>
+        <li>פותחים את חיפוש פלוס › <b>מתן הרשאה</b> › מפעילים "גישה לכל הקבצים".</li>
+        <li><b>בחירת תיקיית הספרים</b> › כרטיס זיכרון › התיקייה הראשית של המאגר.</li>
+      </ol>
+      <div class="tip">💡 <b>כבר מותקנת גרסה קודמת?</b> מתקינים את החדשה מעליה – האינדקס וההגדרות נשמרים. מכאן והלאה התוכנה מציעה בעצמה כל עדכון חדש.</div>
+      <h3>מה קורה אחרי שבוחרים תיקייה?</h3>
+      <p>התוכנה עוברת על כל ה-PDF במאגר (גם בתיקיות עמוקות ולא מוכרות), קוראת כל עמוד ושומרת את הטקסט באינדקס. הספרים עצמם לא משוכפלים ולא זזים – האינדקס הוא רק טקסט, והוא קטן פי כמה מהמאגר.</p>
+      <ul>
+        <li>אפשר לחפש מיד בספרים שכבר נסרקו.</li>
+        <li>ספרים ישנים עם עברית הפוכה או קידוד ישן – מתוקנים אוטומטית.</li>
+        <li>עמודים סרוקים (תמונה בלי טקסט) – מזוהים ב-OCR עברי בתוך המכשיר.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 style="margin-top: 8mm"><span class="n">2</span>הורדות חד-פעמיות (ואז – בלי אינטרנט)</h2>
+  <table>
+    <tr><th>רכיב</th><th>גודל</th><th>למה</th><th>איפה</th></tr>
+    <tr><td><b>🎤 מודל דיבור – מדויק</b> (מומלץ)</td><td>כ-250MB</td><td>מבין עברית ושמות ספרים. כ-10 שניות לזיהוי ב-BOOX</td><td>הגדרות › חיפוש קולי</td></tr>
+    <tr><td>🎤 מודל דיבור – מהיר</td><td>כ-80MB</td><td>מהיר פי 3, טועה יותר בעברית</td><td>הגדרות › חיפוש קולי</td></tr>
+    <tr><td><b>💡 מודל המשמעות</b></td><td>כ-120MB</td><td>חיפוש לפי משמעות, שאלה ותשובה</td><td>הגדרות › חיפוש לפי משמעות</td></tr>
+    <tr><td>OCR עברי</td><td>כלול</td><td>קריאת עמודים סרוקים</td><td>מותקן מראש</td></tr>
+  </table>
+  <p style="margin-top:3mm;color:var(--sub);font-size:10pt">המסכים במדריך הם המחשה של התוכנה.</p><p>המודלים נשמרים במקום שיש בו הכי הרבה זיכרון פנוי (במכשיר או בכרטיס), ולא נטענים יחד – כדי שהמכשיר (2GB RAM) לא יתעייף.</p>
+  <div class="foot"><span>חיפוש פלוס – מדריך</span><span>2</span></div>
+</section>
+
+<!-- ================= VOICE ================= -->
+<section class="page">
+  <h2><span class="n">3</span>🎤 חיפוש קולי – אומרים, והספר נפתח</h2>
+  <div class="cols">
+    <div class="grow">
+      <p>לוחצים על המיקרופון הגדול במסך הבית (או על 🎤 בשורת החיפוש) ואומרים מה רוצים. כשמסיימים לדבר – התוכנה מזהה לבד, מבינה את ההפניה ופותחת את הספר בעמוד. הכול קורה בתוך המכשיר, בלי אינטרנט.</p>
+      <h3>גמרא</h3>
+      <p><span class="say">מסכת ברכות דף כ״ז עמוד א</span><span class="say">ברכות כ״ז ע״א</span><span class="say">גמרא ברכות דף כף זין</span><span class="say">שבת דף עשרים ושבע</span><span class="say">בבא מציעא נ״ט שוטנשטיין</span></p>
+      <p>יש לך כמה מהדורות (וילנא, עוז והדר, שוטנשטיין…)? מופיעה רשימה – בוחרים, וכל אחת נפתחת באותו דף. אומרים את שם המהדורה – והיא תופיע ראשונה.</p>
+      <h3>ליקוטי שיחות</h3>
+      <p><span class="say">ליקוטי שיחות חלק ד׳ עמוד 58</span><span class="say">ליקוטי שיחות חלק ד׳ שיחה לפרשת נח</span><span class="say">לקו״ש ח״ג ויצא</span><span class="say">חלק טו שיחה ב לפרשת חיי שרה</span></p>
+      <p>"עמוד 58" – לפי המספר המודפס בספר, לא לפי מספר העמוד בקובץ. התוכנה לומדת לבד את המספור של כל כרך.</p>
+      <h3>כל ספר אחר במאגר</h3>
+      <p><span class="say">תניא פרק ה</span><span class="say">שולחן ערוך אורח חיים סימן קכח</span><span class="say">רמב״ם הלכות תשובה פרק ג</span></p>
+      <p>התוכנה מחפשת את הספר לפי השם, התיקייה ודף השער – גם אם הוא בתיקייה נידחת, וגם אם האיות שונה (ליקוטי/לקוטי, שולחן/שלחן).</p>
+      <h3>שאלה</h3>
+      <p><span class="say">מה מברכים על פרי העץ?</span><span class="say">למה יעקב יצא לחרן?</span> – עוברים לבד לחיפוש לפי משמעות.</p>
+    </div>
+    <div>
+      <div class="phone">
+        <div class="ph-head"><div class="ph-logo">פ+</div><div class="ph-title">חיפוש פלוס</div></div>
+        <div class="ph-search"><span class="q">ברכות דף כ״ז עמוד א</span><span class="mic">🎤</span><span class="go">חיפוש</span></div>
+        <div class="ph-body">
+          <div class="ph-sheet"><b>🎤 מקשיב… דברו עכשיו</b><div class="ph-bar"><i></i></div><div style="color:var(--acc); font-weight:800; font-size:8.5pt">ברכות דף כ״ז עמוד א</div></div>
+          <div class="ph-sheet"><b>איזה ספר לפתוח?</b>
+            <div class="ph-row"><div class="t">📖 ברכות – וילנא</div><div class="f">גמרא › ש״ס וילנא · עמוד 57</div></div>
+            <div class="ph-row"><div class="t">📖 ברכות – עוז והדר</div><div class="f">גמרא › עוז והדר · עמוד 61</div></div>
+            <div class="ph-row" style="border:0"><div class="t">📖 ברכות ב – שוטנשטיין</div><div class="f">גמרא › שוטנשטיין · עמוד 212</div></div>
+          </div>
+        </div>
+      </div>
+      <p class="caption">מדברים › בוחרים מהדורה › נפתח בדף</p>
+      <div class="tip" style="width:64mm; font-size:10.5pt">✓ <b>הדף לא מדויק?</b> בספר סרוק בלי טקסט העמוד משוער. מדפדפים לדף הנכון ולוחצים <b>"✓ זה המקום"</b> – התוכנה זוכרת לפעם הבאה.</div>
+    </div>
+  </div>
+  <div class="foot"><span>חיפוש פלוס – מדריך</span><span>3</span></div>
+</section>
+
+<!-- ================= MEANING ================= -->
+<section class="page">
+  <h2><span class="n">4</span>💡 חיפוש לפי משמעות – שאלה ותשובה</h2>
+  <div class="cols">
+    <div class="grow">
+      <p>בוחרים "💡 חיפוש לפי משמעות" וכותבים (או אומרים) רעיון או שאלה במילים שלך. התוכנה מוצאת את המקומות שעוסקים בזה – גם אם המילים עצמן לא מופיעות שם – וקוראת אותם משפט אחרי משפט כדי להביא את <b>המשפט שעונה</b>, עם שם הספר והעמוד.</p>
+      <h3>🌙 בונים פעם אחת – בלילה</h3>
+      <p>כדי שהשאלות יעבדו על כל המאגר, התוכנה צריכה "להבין" כל ספר פעם אחת:</p>
+      <ol>
+        <li>הגדרות › חיפוש לפי משמעות › <b>הורדת מודל המשמעות</b>.</li>
+        <li>לוחצים <b>"🌙 בניית אינדקס המשמעות המלא"</b>.</li>
+        <li>מחברים לטעינה ומשאירים ללילה. בהתראה ובמסך הבית רואים כמה ספרים נעשו וכמה זמן נשאר.</li>
+      </ol>
+      <p>בבוקר: <b>"💡 אינדקס המשמעות: מוכן לשאלות ✓"</b>. מכאן – כל שאלה, בלי אינטרנט.</p>
+      <div class="tip">⚡ גם לפני שהאינדקס הושלם – אפשר לשאול. התוכנה קוראת במקום את העמודים שמזכירים את מילות השאלה ומשווה את המשמעות שלהם.</div>
+      <div class="box"><b>BOOX: כדי שהעבודה בלילה לא תיעצר</b><br>הגדרות המכשיר › אפליקציות › ניהול אפליקציות › חיפוש פלוס › לכבות "הקפאה" ולאפשר ריצה ברקע.</div>
+      <h3>טיפים</h3>
+      <ul>
+        <li>שאלה מלאה עובדת הכי טוב: "מה הדין אם שכח לברך ברכת המזון?"</li>
+        <li>אפשר להתמקד: אחרי החיפוש לוחצים על תיקייה (חסידות › רבותינו נשיאינו…).</li>
+        <li>אפשר לבחור תיקיות חשובות לאינדקס כדי שייבנה מהר יותר.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="phone">
+        <div class="ph-head"><div class="ph-logo">פ+</div><div class="ph-title">חיפוש פלוס</div></div>
+        <div class="ph-search"><span class="q">מה מברכים על פרי העץ?</span><span class="mic">🎤</span><span class="go">חיפוש</span></div>
+        <div class="ph-modes"><span>🔤 חיפוש מילים</span><span class="on">💡 לפי משמעות</span></div>
+        <div class="ph-body">
+          <div class="ph-answer"><div class="h">💡 התשובה מתוך הספרים שלך</div>
+            <div style="font-size:8pt; margin:1mm 0">‟על פירות האילן הוא אומר בורא פרי העץ, חוץ מן היין, שעל היין הוא אומר בורא פרי הגפן”</div>
+            <div class="src">📖 משנה ברכות, עמוד 74 · לפתיחה ◂</div></div>
+          <div class="ph-row"><div class="t">▾ ברכות – וילנא <i>91%</i></div><div class="f">גמרא › ש״ס וילנא</div></div>
+          <div class="ph-snip"><span class="pg">עמוד 78 (התאמה 91%)</span><br>…כיצד מברכין על הפירות? על <mark>פירות</mark> האילן אומר בורא <mark>פרי העץ</mark>…</div>
+          <div class="ph-row"><div class="t">◂ שולחן ערוך הרב <i>87%</i></div><div class="f">הלכה › סדר ברכות הנהנין</div></div>
+          <div class="ph-row"><div class="t">◂ קיצור שולחן ערוך <i>84%</i></div><div class="f">הלכה</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>חיפוש פלוס – מדריך</span><span>4</span></div>
+</section>
+
+<!-- ================= WORDS + READER ================= -->
+<section class="page">
+  <h2><span class="n">5</span>🔤 חיפוש מילים – מדויק ומהיר</h2>
+  <div class="cols">
+    <div class="grow">
+      <table>
+        <tr><th>אפשרות</th><th>מה היא עושה</th></tr>
+        <tr><td><b>ביטוי מדויק</b></td><td>"רבי שמעון" – בדיוק בסדר הזה</td></tr>
+        <tr><td><b>כל המילים בעמוד</b></td><td>כל המילים מופיעות באותו עמוד</td></tr>
+        <tr><td><b>מילים קרובות</b></td><td>המילים קרובות זו לזו (עד 12 מילים)</td></tr>
+        <tr><td><b>כולל ו׳ ה׳ ב׳ ל׳ ש׳…</b></td><td>"שמעון" ימצא גם "ושמעון", "לשמעון"</td></tr>
+        <tr><td><b>כוכבית</b></td><td>ויצ* – ויצא, ויצאו, ויצאה…</td></tr>
+      </table>
+      <p style="margin-top:3mm">אחרי החיפוש: לוחצים על תיקייה כדי למקד (הכל › חסידות חב"ד › רבותינו נשיאינו), ממיינים לפי רלוונטיות / שם / תיקייה / גודל / תאריך, ופותחים ספר כדי לראות את כל העמודים עם קטע מודגש.</p>
+      <p>הקלדה של הפניה ("ברכות כז") מציגה למעלה פס <b>"⤶ פתיחה"</b> שמביא ישר לדף.</p>
+    </div>
+  </div>
+
+  <h2 style="margin-top:6mm"><span class="n">6</span>📖 פתיחת ספר – איפה שבחרת</h2>
+  <div class="cols">
+    <div class="grow">
+      <h3>הקורא המובנה (מומלץ)</h3>
+      <ul>
+        <li>נפתח בדיוק בעמוד, <b>המילים שחיפשת מסומנות</b>.</li>
+        <li>הקשה בצדדים / כפתורי עוצמה – דפדוף. צביטה – הגדלה.</li>
+        <li>"תוצאה הבאה" קופצת לעמוד הבא שבו המילים מופיעות.</li>
+        <li>חיפוש בתוך הספר, מועדפים, העתקת טקסט, המשך מהעמוד האחרון.</li>
+      </ul>
+      <h3>אפליקציה משלך כברירת מחדל (ReadEra וכו׳)</h3>
+      <p>הגדרות › <b>באיזו אפליקציה לפתוח ספרים</b> › בוחרים פעם אחת – ומאז כל ספר נפתח שם ישר, בלי השאלה "פתיחה באמצעות". התוכנה שולחת את מספר העמוד, ומעתיקה את מילות החיפוש כדי שאפשר יהיה להדביק אותן בחיפוש של הקורא. אפשר לשנות בכל רגע.</p>
+      <div class="tip">ℹ סימון אוטומטי של המילים על העמוד אפשרי רק בקורא המובנה – אפליקציות אחרות לא מקבלות מבחוץ אילו מילים לסמן.</div>
+    </div>
+    <div>
+      <div class="phone">
+        <div class="ph-refbar"><span>⤶ לקוטי שיחות חלק ד – נח</span><span>✓ זה המקום ✕</span></div>
+        <div class="ph-body">
+          <div class="ph-page"><div class="hdr">לקוטי שיחות · נח · 58</div>
+          א. עה״פ אלה תולדות <mark>נח</mark> <mark>נח</mark> איש צדיק תמים הי׳ בדורותיו, ופירש״י: ״הואיל והזכירו סיפר בשבחו״. וצריך להבין… ואח״כ ממשיך ״את האלקים התהלך <mark>נח</mark>״, ובפשטות צריך ביאור מהו החידוש שבזה…
+          <br><br>ב. ויש לומר הביאור בזה, דהנה ידוע שכל עניני התורה הם הוראה בעבודת האדם…</div>
+          <div style="display:flex; justify-content:space-between; color:var(--acc); font-weight:800; font-size:7pt; padding-top:1mm"><span>הקודם ▶</span><span>עמוד 64 / 412</span><span>◀ הבא</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span>חיפוש פלוס – מדריך</span><span>5</span></div>
+</section>
+
+<!-- ================= ORGANIZE + FAQ ================= -->
+<section class="page">
+  <h2><span class="n">7</span>🗂 סידור המאגר</h2>
+  <p>התוכנה כבר מכירה את כל הספרים מהסריקה, ולכן הסידור מהיר ולא קורא את הספרים מחדש.</p>
+  <ul>
+    <li><b>ספרים כפולים</b> – לפי התוכן, לא לפי השם (אותו ספר שנשמר פעמיים בשמות שונים).</li>
+    <li><b>סידור תיקייה</b> – תצוגה מקדימה שאפשר לערוך לפני שמחילים: לפי נושא, סדרה, אות, או לתיקיות המאגר.</li>
+    <li><b>שמות חכמים</b> – שם לפי דף השער והתוכן, עם אישור על כל שינוי. הכול ניתן לביטול.</li>
+  </ul>
+
+  <h2 style="margin-top:6mm"><span class="n">8</span>יציבות ו-BOOX</h2>
+  <ul>
+    <li>מותאם ל-BOOX Go 6 (אנדרואיד 11, 2GB RAM, מסך E-ink): ניגודיות גבוהה, בלי אנימציות, דפדוף בעמודים שלמים.</li>
+    <li>שני מודלי AI אף פעם לא נטענים יחד. כשהמכשיר עמוס – המודלים משתחררים ונטענים שוב כשצריך.</li>
+    <li>בזמן שמדברים, הסריקה ברקע עוצרת לרגע ומפנה לך את המעבד.</li>
+    <li>אם משהו משתבש – התוכנה לא נסגרת בגלל ספר אחד פגום, והפרטים נשמרים להעתקה ושליחה.</li>
+  </ul>
+
+  <h2 style="margin-top:6mm"><span class="n">9</span>שאלות נפוצות</h2>
+  <h3>החיפוש הקולי לא הבין אותי</h3>
+  <p>מדברים ברור, קרוב למכשיר, ואומרים את שם הספר בהתחלה ("ברכות דף…"). בהגדרות › חיפוש קולי › "בדיקת החיפוש הקולי" אפשר לראות בדיוק מה נשמע. אם בחרתם במודל המהיר – עברו למדויק.</p>
+  <h3>"לא נמצא ספר כזה במאגר"</h3>
+  <p>הסריקה עוד רצה, או ששם הקובץ שונה מאוד. אפשר לחפש את שם הספר בחיפוש מילים, או לתת לקובץ "שם חכם" בסידור המאגר.</p>
+  <h3>החיפוש לפי משמעות לא מוצא כלום</h3>
+  <p>בהגדרות רואים כמה ספרים כבר באינדקס המשמעות, ואם הייתה שגיאה – היא כתובה שם (⚠). הפעילו "🌙 בניית אינדקס המשמעות המלא" והשאירו בטעינה.</p>
+  <h3>איך מעדכנים?</h3>
+  <p>התוכנה בודקת פעם ביום ומציעה להתקין גרסה חדשה. אפשר גם: הגדרות › בדיקת עדכונים עכשיו.</p>
+
+  <div class="box" style="margin-top:6mm"><b>קוד פתוח</b> · <span dir="ltr">github.com/sw0555041250-code/Search-Plus-</span> · כל הקוד, ההסבר למפתחים (HANDOFF.md) והגרסאות.<br>פותח על ידי <b>שניאור וילהלם</b> · מופץ בחינם לתועלת הרבים</div>
+  <div class="foot"><span>חיפוש פלוס – מדריך</span><span>6</span></div>
+</section>
+</body>
+</html>
