@@ -22,7 +22,10 @@ object Updater {
 
     fun dailyCheck(a: Activity) {
         if (!Prefs.b("autoUpdate", true)) return
-        if (System.currentTimeMillis() - Prefs.l("lastUpdateCheck", 0L) < 24L * 3600 * 1000) return
+        // after an update (or the first run of this version) check again right away; otherwise every 6 hours
+        val v = local(a)
+        if (Prefs.s("checkedForVersion", "") != v) { Prefs.put("checkedForVersion", v); Prefs.put("lastUpdateCheck", 0L) }
+        if (System.currentTimeMillis() - Prefs.l("lastUpdateCheck", 0L) < 6L * 3600 * 1000) return
         Prefs.put("lastUpdateCheck", System.currentTimeMillis())
         check(a, true)
     }
@@ -49,7 +52,8 @@ object Updater {
             } catch (e: Exception) {
                 ui {
                     busy = false
-                    if (!silent) Sheet.info(a, "לא ניתן לבדוק עדכונים", "ודאו שהמכשיר מחובר לאינטרנט ונסו שוב.")
+                    Prefs.put("lastUpdateCheck", 0L) // try again next time
+                    if (!silent) Sheet.info(a, "לא ניתן לבדוק עדכונים", "ודאו שהמכשיר מחובר לאינטרנט ונסו שוב.\n(${e.javaClass.simpleName}: ${e.message ?: ""})")
                 }
             }
         }.start()

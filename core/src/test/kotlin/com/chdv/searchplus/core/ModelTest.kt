@@ -75,6 +75,10 @@ class ModelTest {
                     assertTrue("empty transcription for $said", text.isNotBlank())
                 }
                 println("[$model] understood $good / ${cases.size}")
+                // a quiet microphone: the same sentence at 3% volume must still be understood
+                val quiet = readWav(File(dir, "audio/0.wav")).map { it * 0.03f }.toFloatArray()
+                println("[$model] quiet: 「${w.transcribe(quiet, "he", Whisper.PROMPT)}」")
+                println("[$model] peak memory so far: " + File("/proc/self/status").readLines().filter { it.startsWith("VmHWM") || it.startsWith("VmRSS") })
             }
         }
     }

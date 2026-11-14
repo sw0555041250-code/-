@@ -108,7 +108,7 @@ class SettingsActivity : BaseActivity() {
             if (wReady) items.add("מחיקת מודל הדיבור (${wm.title})" to { VoiceModels.delete(this, wm.key); render() })
             Sheet.actions(this, "מודל זיהוי הדיבור", items)
         }
-        item("בדיקת החיפוש הקולי", "לחיצה, ודברו – תראו מה התוכנה שמעה") {
+        item("בדיקת החיפוש הקולי", "לחיצה, ודברו – תראו מה התוכנה שמעה" + Prefs.s("voiceLast", "").let { if (it.isEmpty()) "" else "\nבפעם האחרונה: $it" }) {
             VoiceSearch.start(this) { t -> Sheet.info(this, "זה מה ששמעתי", t + (com.chdv.searchplus.core.RefParser.parse(t)?.let { "\n\nהבנתי: " + it.label() } ?: "")) }
         }
 
@@ -251,6 +251,11 @@ class SettingsActivity : BaseActivity() {
                 }
             },
         ))
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == VoiceSearch.REQ_MIC) VoiceSearch.onPermission(this, grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED)
     }
 
     override fun onDestroy() { super.onDestroy(); bg.shutdown() }

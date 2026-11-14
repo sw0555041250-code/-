@@ -25,7 +25,7 @@ object HebNum {
         n('ח', "חית", "חת", "חס", "חיס", "חיט")
         n('ט', "טית", "טת", "טס", "טיס", "טט")
         n('י', "יוד", "יוּד", "יד", "יאד", "יודה")
-        n('כ', "כף", "כאף", "קף", "חף", "כפ", "קאף", "כאפ")
+        n('כ', "כף", "כאף", "קף", "חף", "כפ", "קאף", "כאפ", "חב", "כב", "חאף", "חאב", "כהף")
         n('ל', "למד", "לאמד", "למעד", "לאמעד", "למ")
         n('מ', "מם", "מים", "מעם", "מאם")
         n('נ', "נון", "נוּן", "נן")
@@ -102,9 +102,13 @@ object HebNum {
             var j = i
             val sb = StringBuilder()
             while (j < tokens.size && sb.length < 4) {
-                val c = LETTER_NAMES[stripVav(tokens[j], j > i)] ?: break
-                sb.append(c); j++
+                val c = LETTER_NAMES[stripVav(tokens[j], j > i)]
+                if (c != null) { sb.append(c); j++; continue }
+                // two letter names written as one word by the speech recognizer: "כפזין", "חבזין"
+                val glued = glued(tokens[j]) ?: break
+                sb.append(glued); j++
             }
+            if (j - i == 1 && sb.length >= 2) gematria(sb.toString())?.let { return it to 1 }
             if (j - i >= 2 || (j - i == 1 && tokens[i].length >= 2 && tokens[i] !in UNITS && tokens[i] !in TENS && tokens[i] in STRONG_NAMES)) {
                 gematria(sb.toString())?.let { return it to (j - i) }
             }
@@ -131,6 +135,16 @@ object HebNum {
             if (used && total > 0) return total to (j - i)
         }
         if (allowPlainWord) gematria(t)?.let { return it to 1 }
+        return null
+    }
+
+    private fun glued(w: String): String? {
+        if (w.length < 4) return null
+        for (k in 2..w.length - 2) {
+            val a = LETTER_NAMES[w.substring(0, k)] ?: continue
+            val b = LETTER_NAMES[w.substring(k)] ?: continue
+            return "$a$b"
+        }
         return null
     }
 

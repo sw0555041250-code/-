@@ -66,6 +66,7 @@ class MainActivity : BaseActivity() {
             Indexer.start(this)
         }
         Updater.dailyCheck(this)
+        checkLastExit()
         val crash = File(filesDir, "crash.txt")
         if (crash.exists()) {
             val t = try { crash.readText() } catch (e: Exception) { "" }
@@ -427,6 +428,57 @@ class MainActivity : BaseActivity() {
         }
     }
 
+    /**
+     * Android 11 keeps the reason the app last closed (also for crashes of native code and the system
+     * killing it for memory, which no error handler can catch). Show it once, with a fix where there is one.
+     */
+    private fun checkLastExit() {
+        val busy = Prefs.l("voiceBusy", 0L)
+        Prefs.put("voiceBusy", 0L)
+        if (android.os.Build.VERSION.SDK_INT < 30) {
+            if (busy > 0) voiceCrashSheet("")
+            return
+        }
+        try {
+            val am = getSystemService(android.app.ActivityManager::class.java)
+            val e = am.getHistoricalProcessExitReasons(packageName, 0, 1).firstOrNull() ?: return
+            if (e.timestamp <= Prefs.l("lastExitSeen", 0L)) return
+            Prefs.put("lastExitSeen", e.timestamp)
+            val r = e.reason
+            val bad = r == android.app.ApplicationExitInfo.REASON_CRASH || r == android.app.ApplicationExitInfo.REASON_CRASH_NATIVE ||
+                r == android.app.ApplicationExitInfo.REASON_LOW_MEMORY || r == android.app.ApplicationExitInfo.REASON_ANR ||
+                (r == android.app.ApplicationExitInfo.REASON_SIGNALED && busy > 0)
+            if (!bad) return
+            val why = when (r) {
+                android.app.ApplicationExitInfo.REASON_LOW_MEMORY, android.app.ApplicationExitInfo.REASON_SIGNALED -> "המכשיר סגר את התוכנה כי נגמר הזיכרון"
+                android.app.ApplicationExitInfo.REASON_ANR -> "התוכנה לא הגיבה זמן רב"
+                else -> "שגיאה בתוכנה"
+            }
+            val details = "$why\n(${e.reason}/${e.status} ${e.description ?: ""}) גרסה ${packageManager.getPackageInfo(packageName, 0).versionName}"
+            if (busy > 0 && e.timestamp >= busy) voiceCrashSheet(details)
+            else Sheet.confirm(this, "התוכנה נסגרה בפעם הקודמת", details + "\n\nאפשר להעתיק את הפרטים ולשלוח למפתח.", "העתקת הפרטים") {
+                (getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("exit", details))
+                toast("הועתק")
+            }
+        } catch (x: Throwable) {}
+    }
+
+    private fun voiceCrashSheet(details: String) {
+        val small = Prefs.s("whisperModel", "small") == "small"
+        val items = ArrayList<Pair<String, () -> Unit>>()
+        if (small) items.add("לעבור למודל הדיבור המהיר (קטן פי 3 – מתאים לזיכרון קטן)" to {
+            Prefs.put("whisperModel", "base")
+            if (!VoiceModels.ready(this, "base")) VoiceSearch.downloadNow(this, "base") { toast("מוכן – נסו שוב את המיקרופון") } else toast("עבר למודל המהיר – נסו שוב")
+        })
+        if (VoiceSearch.systemAvailable(this)) items.add("להשתמש בשירות הדיבור של המכשיר (צריך אינטרנט)" to { Prefs.put("voiceEngine", "system"); toast("נסו שוב את המיקרופון") })
+        items.add("להעתיק את הפרטים למפתח" to {
+            (getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("voice", "זיהוי דיבור נסגר: $details"))
+            toast("הועתק")
+        })
+        items.add("להמשיך כרגיל" to {})
+        Sheet.actions(this, "זיהוי הדיבור עצר את התוכנה בפעם הקודמת" + if (details.isNotEmpty()) "\n$details" else "", items)
+    }
+
     // ---------------- voice and direct jumps ----------------
 
     private val questionWords = setOf("מה", "מהו", "מהי", "איך", "כיצד", "למה", "מדוע", "מתי", "מי", "האם", "היכן", "איפה", "מאיפה", "כמה")
@@ -445,6 +497,12 @@ class MainActivity : BaseActivity() {
     private fun showJump(q: String, token: Int, auto: Boolean) {
         jumpBar.visibility = View.GONE
         val ref = try { RefParser.parse(q) } catch (e: Throwable) { null } ?: return
+        if (ref.kind == com.chdv.searchplus.core.Ref.Kind.GEMARA && ref.daf == null) {
+            jumpBar.text = "⤶ ${ref.work}: לא הבנתי איזה דף. אמרו למשל \"${ref.work} דף כ״ז עמוד א\""
+            jumpBar.visibility = View.VISIBLE
+            jumpBar.setOnClickListener(null)
+            return
+        }
         jumpBar.text = "⤶ מחפש את ${ref.label()}…"
         jumpBar.visibility = View.VISIBLE
         jumpBar.setOnClickListener(null)

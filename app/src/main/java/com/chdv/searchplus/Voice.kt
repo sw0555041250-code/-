@@ -114,10 +114,14 @@ class Recorder(private val onLevel: (Float) -> Unit) {
     fun record(): FloatArray? {
         val sr = 16000
         val min = AudioRecord.getMinBufferSize(sr, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-        val rec = try {
-            AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, sr, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, max(min, sr))
-        } catch (e: Exception) { return null }
-        if (rec.state != AudioRecord.STATE_INITIALIZED) { rec.release(); return null }
+        // some devices (E-ink readers among them) don't offer the speech-recognition source: fall back to the plain microphone
+        var rec: AudioRecord? = null
+        for (src in listOf(MediaRecorder.AudioSource.VOICE_RECOGNITION, MediaRecorder.AudioSource.MIC, MediaRecorder.AudioSource.DEFAULT)) {
+            val r = try { AudioRecord(src, sr, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, max(min, sr)) } catch (e: Exception) { null } ?: continue
+            if (r.state == AudioRecord.STATE_INITIALIZED) { rec = r; break }
+            r.release()
+        }
+        if (rec == null) return null
         val out = ShortArrayBuilder()
         val buf = ShortArray(sr / 10) // 100ms
         var noise = 300f
@@ -135,7 +139,7 @@ class Recorder(private val onLevel: (Float) -> Unit) {
                 val level = e.toFloat() / n
                 onLevel((level / 3000f).coerceIn(0f, 1f))
                 if (!spoke) {
-                    if (level > noise * 2.5f && level > 500) spoke = true
+                    if (level > noise * 2.2f && level > 150) spoke = true
                     else noise = noise * 0.9f + level * 0.1f
                 } else {
                     if (level < noise * 1.8f) quiet++ else quiet = 0
@@ -311,10 +315,20 @@ object VoiceSearch {
                 loader.join(); cur = null; VoiceModels.Engine.releaseLater(); return@Thread
             }
             ui { u.title.text = "⏳ מזהה את הדיבור…"; u.btn.visibility = View.GONE; level(u, 0f) }
+            val t0 = System.currentTimeMillis()
+            val ticker = object : Runnable { override fun run() {
+                if (closed || cur == null) return
+                u.title.text = "⏳ מזהה את הדיבור… ${(System.currentTimeMillis() - t0) / 1000} שנ׳"
+                App.main.postDelayed(this, 1000)
+            } }
+            App.main.post(ticker)
+            Prefs.put("voiceBusy", System.currentTimeMillis())
             loader.join()
             val text = try {
                 val m = w ?: throw (loadErr ?: IllegalStateException("המודל לא נטען"))
-                m.transcribe(audio, "he", Whisper.PROMPT) { closed }
+                m.transcribe(audio, "he", Whisper.PROMPT) { closed }.also {
+                    Prefs.put("voiceLast", "${(System.currentTimeMillis() - t0) / 1000} שנ׳ · \"$it\"")
+                }
             } catch (e: OutOfMemoryError) {
                 VoiceModels.Engine.release(); System.gc()
                 ui { u.d.dismiss(); Sheet.info(a, "אין מספיק זיכרון", "המכשיר עמוס כרגע. סגרו אפליקציות אחרות ונסו שוב, או בחרו בהגדרות את מודל הדיבור המהיר (קטן יותר).") }
@@ -325,6 +339,8 @@ object VoiceSearch {
                 null
             }
             cur = null
+            Prefs.put("voiceBusy", 0L)
+            App.main.removeCallbacks(ticker)
             Progress.paused = false
             VoiceModels.Engine.releaseLater()
             if (text != null && !closed) ui {
