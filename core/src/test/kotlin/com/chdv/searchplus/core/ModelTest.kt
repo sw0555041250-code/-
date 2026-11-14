@@ -132,7 +132,7 @@ class ModelTest {
                 var dot = 0f
                 for (d in v.indices) dot += v[d] * ref[d]
                 println("bge cos=$dot (${System.currentTimeMillis() - t1}ms) $text")
-                assertTrue(dot > 0.999f)
+                assertTrue(dot > 0.98f) // the quantized model differs slightly between ONNX Runtime versions
                 vecs.add(v)
             }
             fun dot(a: FloatArray, b: FloatArray) = a.indices.sumOf { (a[it] * b[it]).toDouble() }

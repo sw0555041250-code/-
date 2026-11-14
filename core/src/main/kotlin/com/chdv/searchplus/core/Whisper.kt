@@ -194,9 +194,6 @@ class Whisper(
         fun opts() = OrtSession.SessionOptions().apply {
             setIntraOpNumThreads(threads)
             setOptimizationLevel(OrtSession.SessionOptions.OptLevel.EXTENDED_OPT)
-            // on a 2GB device: give memory back after every run instead of keeping big buffers around
-            setCPUArenaAllocator(false)
-            setMemoryPatternOptimization(false)
         }
         enc = env.createSession(encoderPath, opts())
         dec = try { env.createSession(decoderPath, opts()) } catch (e: Throwable) { enc.close(); throw e }
@@ -311,13 +308,13 @@ class Whisper(
         fun normalize(audio: FloatArray): FloatArray {
             var peak = 0f
             for (x in audio) { val v = kotlin.math.abs(x); if (v > peak) peak = v }
-            if (peak < 0.003f || peak > 0.25f) return audio
+            if (peak < 0.003f || peak > 0.08f) return audio
             val g = minOf(0.5f / peak, 40f)
             return FloatArray(audio.size) { audio[it] * g }
         }
 
         /** A hint that teaches the recognizer how the names of books are written. */
-        const val PROMPT = "מסכת ברכות דף כ״ז עמוד א׳. בבא מציעא דף נ״ט. ליקוטי שיחות חלק ד׳ עמוד 58, שיחה לפרשת נח. תניא פרק ה׳. רמב״ם. שולחן ערוך."
+        const val PROMPT = "מסכת ברכות דף כ״ז עמוד א׳. ליקוטי שיחות חלק ג׳ פרשת ויצא. תניא פרק ה׳. רמב״ם. שולחן ערוך. גמרא שוטנשטיין."
     }
 }
 
