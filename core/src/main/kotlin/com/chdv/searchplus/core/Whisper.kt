@@ -187,20 +187,37 @@ class Whisper(
     threads: Int = 4,
     /** BASIC uses less memory while loading (weak devices); EXTENDED runs a little faster. */
     optLevel: OrtSession.SessionOptions.OptLevel = OrtSession.SessionOptions.OptLevel.EXTENDED_OPT,
+    /**
+     * For devices with little memory (2GB): the two halves of the model are never in memory together –
+     * the encoder is loaded, run and freed, then the decoder. Slower (it loads each time), but the
+     * peak memory is about half.
+     */
+    private val lowMemory: Boolean = false,
 ) : AutoCloseable {
-    private val enc: OrtSession
-    private val dec: OrtSession
-    val nMels: Int
-
-    init {
-        fun opts() = OrtSession.SessionOptions().apply {
+    private val encPath = encoderPath
+    private val decPath = decoderPath
+    private val opts: () -> OrtSession.SessionOptions = {
+        OrtSession.SessionOptions().apply {
             setIntraOpNumThreads(threads)
             setOptimizationLevel(optLevel)
+            if (lowMemory) setCPUArenaAllocator(false)
         }
-        enc = env.createSession(encoderPath, opts())
-        dec = try { env.createSession(decoderPath, opts()) } catch (e: Throwable) { enc.close(); throw e }
-        val shape = (enc.inputInfo.values.first().info as TensorInfo).shape
-        nMels = if (shape.size == 3 && shape[1] > 0) shape[1].toInt() else 80
+    }
+    private var encS: OrtSession? = null
+    private var decS: OrtSession? = null
+    private val enc: OrtSession get() = encS ?: env.createSession(encPath, opts()).also { encS = it }
+    private val dec: OrtSession get() = decS ?: env.createSession(decPath, opts()).also { decS = it }
+    private var melsKnown = 0
+    val nMels: Int get() {
+        if (melsKnown == 0) {
+            val shape = (enc.inputInfo.values.first().info as TensorInfo).shape
+            melsKnown = if (shape.size == 3 && shape[1] > 0) shape[1].toInt() else 80
+        }
+        return melsKnown
+    }
+
+    init {
+        if (!lowMemory) { enc; try { dec } catch (e: Throwable) { encS?.close(); throw e } }
     }
 
     /** Timings of the last run, for tests and the status line. */
@@ -217,8 +234,19 @@ class Whisper(
         val encRes = try { enc.run(mapOf(enc.inputNames.first() to encIn)) } finally { encIn.close() }
         lastEncMs = System.currentTimeMillis() - t0
         t0 = System.currentTimeMillis()
+        var own: OnnxTensor? = null
+        if (lowMemory) {
+            // keep only the encoder's answer (a few MB), free the encoder itself before loading the decoder
+            val h = encRes.get(0) as OnnxTensor
+            val shape = h.info.shape
+            val copy = h.floatBuffer
+            own = OnnxTensor.createTensor(env, copy, shape)
+            encRes.close()
+            encS?.close(); encS = null
+            System.gc()
+        }
         try {
-            val hidden = encRes.get(0) as OnnxTensor
+            val hidden = own ?: (encRes.get(0) as OnnxTensor)
             val prefix = ArrayList<Int>()
             if (!prompt.isNullOrBlank()) {
                 prefix.add(tok.id("<|startofprev|>"))
@@ -231,7 +259,7 @@ class Whisper(
             val out = decode(hidden, prefix, maxTokens, cancelled)
             return tok.decode(out).trim()
         } finally {
-            encRes.close()
+            if (own == null) encRes.close() else { own.close(); decS?.close(); decS = null }
             lastDecMs = System.currentTimeMillis() - t0
         }
     }
@@ -301,9 +329,11 @@ class Whisper(
     }
 
     override fun close() {
-        try { enc.close() } catch (e: Exception) {}
-        try { dec.close() } catch (e: Exception) {}
+        try { encS?.close() } catch (e: Exception) {}
+        try { decS?.close() } catch (e: Exception) {}
+        encS = null; decS = null
     }
+
 
     companion object {
         /** A quiet microphone (common on E-ink readers) is brought to a normal level; silence stays silence. */

@@ -75,6 +75,15 @@ class ModelTest {
                     assertTrue("empty transcription for $said", text.isNotBlank())
                 }
                 println("[$model] understood $good / ${cases.size}")
+                // the low-memory way (2GB devices) must give the same words
+                Whisper(env, enc.path, File(dir, "$model/decoder_model_merged_quantized.onnx").path, WhisperTokenizer(File(dir, "$model/tokenizer.json")),
+                    4, ai.onnxruntime.OrtSession.SessionOptions.OptLevel.BASIC_OPT, lowMemory = true).use { lw ->
+                    val a0 = readWav(File(dir, "audio/1.wav"))
+                    val t0 = System.currentTimeMillis()
+                    val lowText = lw.transcribe(a0, "he", Whisper.PROMPT)
+                    println("[$model] low-memory: 「$lowText」 (${System.currentTimeMillis() - t0}ms)")
+                    assertTrue(lowText.isNotBlank())
+                }
                 // a quiet microphone: the same sentence at 3% volume must still be understood
                 val quiet = readWav(File(dir, "audio/0.wav")).map { it * 0.03f }.toFloatArray()
                 println("[$model] quiet: 「${w.transcribe(quiet, "he", Whisper.PROMPT)}」")

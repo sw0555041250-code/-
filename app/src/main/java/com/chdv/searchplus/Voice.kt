@@ -114,6 +114,9 @@ object VoiceModels {
         fun release() { try { w?.close() } catch (e: Exception) {}; w = null }
     }
 
+    /** A device with little memory (like a 2GB E-ink reader): the model is run in the low-memory way. */
+    fun lowMemory(c: Context): Boolean = totalMemMb(c) < 3200 || Prefs.b("voiceLowMem", false)
+
     fun freeMemoryMb(c: Context): Long {
         val mi = ActivityManager.MemoryInfo()
         (c.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(mi)
@@ -322,9 +325,9 @@ object VoiceSearch {
         VoiceRemote.warm(a)
         Thread {
             val audio = try { rec.record() } catch (e: Throwable) { null }
-            if (closed) { cur = null; return@Thread }
+            if (closed) { cur = null; ui { VoiceRemote.release(a) }; return@Thread }
             if (audio == null || audio.size < 16000 / 3) {
-                ui { u.d.dismiss(); a.toast(if (audio == null) "לא ניתן להשתמש במיקרופון" else "לא נקלט דיבור. נסו שוב") }
+                ui { VoiceRemote.release(a); u.d.dismiss(); a.toast(if (audio == null) "לא ניתן להשתמש במיקרופון" else "לא נקלט דיבור. נסו שוב") }
                 cur = null; Progress.paused = false; return@Thread
             }
             ui {
@@ -372,7 +375,7 @@ object VoiceSearch {
         if (systemAvailable(a)) items.add("🌐 זיהוי דרך האינטרנט (שירות הדיבור של המכשיר)" to { Prefs.put("voiceEngine", "system"); listenSystem(a, onText) })
         items.add("⌨ להקליד במקום לדבר" to { a.startActivity(android.content.Intent(a, VoiceActivity::class.java)) })
         val why = when {
-            r.died -> "המכשיר עצר את הזיהוי (כנראה חוסר זיכרון). התוכנה עצמה ממשיכה לעבוד."
+            r.died -> "למכשיר נגמר הזיכרון (יש בו 2GB) והוא עצר את הזיהוי. התוכנה עצמה ממשיכה לעבוד. כדאי לסגור אפליקציות אחרות, או לבחור זיהוי \"מהיר\"."
             else -> r.error ?: "שגיאה"
         }
         Sheet.actions(a, "הזיהוי לא הצליח – $why", items)
