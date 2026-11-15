@@ -111,6 +111,9 @@ object Prefs {
         e.apply()
     }
     fun list(k: String): MutableList<String> = s(k, "").split('\n').filter { it.isNotBlank() }.toMutableList()
+    /** Saved to disk right away (put() saves in the background) – for what must survive a sudden kill. */
+    fun commit(k: String, v: Long) { try { sp.edit().putLong(k, v).commit() } catch (e: Throwable) {} }
+
     fun putList(k: String, l: List<String>) = put(k, l.joinToString("\n"))
 }
 

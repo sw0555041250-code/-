@@ -47,7 +47,8 @@ class MainActivity : BaseActivity() {
     private var gateShownAt = 0L
 
     private fun updateGate() {
-        val show = !gateSkipped && Library.hasAccess(this) && Library.roots().isNotEmpty() && !Prefs.b("firstScanDone", false)
+        // once books were read and the app was used, the library can be searched – never block it again
+        val show = !gateSkipped && !Prefs.b("gateSkipped", false) && Library.hasAccess(this) && Library.roots().isNotEmpty() && !Prefs.b("firstScanDone", false)
         if (!show) { gate.visibility = View.GONE; return }
         if (gate.visibility != View.VISIBLE) { gate.visibility = View.VISIBLE; gateShownAt = System.currentTimeMillis() }
         val reading = Progress.phase == "קורא ספרים" && Progress.total > 0
@@ -55,7 +56,7 @@ class MainActivity : BaseActivity() {
         if (reading) gateBar.progress = (Progress.done * 1000L / Progress.total).toInt()
         gateText.text = if (Progress.running) Progress.text() else "מתחיל…"
         // a way out after a while (e.g. a library so big that it takes all night)
-        if (System.currentTimeMillis() - gateShownAt > 60_000) gateSkip.visibility = View.VISIBLE
+        if (System.currentTimeMillis() - gateShownAt > 60_000 || Prefs.b("someRead", false)) gateSkip.visibility = View.VISIBLE
     }
     private lateinit var optScroll: View
 
@@ -278,7 +279,7 @@ class MainActivity : BaseActivity() {
         gateSkip = label("להשתמש בינתיים בספרים שכבר נקראו ›", 14f, 0xCCFFFFFF.toInt()).apply {
             gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER; setPadding(0, dp(28), 0, 0)
             visibility = View.GONE
-            setOnClickListener { gateSkipped = true; updateGate() }
+            setOnClickListener { gateSkipped = true; Prefs.put("gateSkipped", true); updateGate() }
         }
         gate.addView(gateSkip, lp(MATCH, WRAP))
         val frame = android.widget.FrameLayout(this)
@@ -629,7 +630,9 @@ class MainActivity : BaseActivity() {
             } catch (x: Throwable) { null } else null
             val freeze = try { File(filesDir, "freeze.txt").takeIf { it.exists() }?.readText()?.take(1500) } catch (x: Throwable) { null }
             File(filesDir, "freeze.txt").delete()
-            val details = "$why\n(${e.reason}/${e.status} ${e.description ?: ""}) גרסה ${packageManager.getPackageInfo(packageName, 0).versionName}" +
+            // how much memory the app held when it was closed, and what the scan was reading
+            val mem = "זיכרון: ${e.pss / 1024}MB" + (Prefs.l("scanFile", 0L).takeIf { it > 0 }?.let { id -> Db.get().book(id)?.let { " · קרא את: ${it.title} (${it.size / 1048576}MB) – הספר הזה ידולג" } } ?: "")
+            val details = "$why\n(${e.reason}/${e.status} ${e.description ?: ""}) גרסה ${packageManager.getPackageInfo(packageName, 0).versionName}\n$mem" +
                 (trace?.let { "\n\n$it" } ?: "") + (anr?.takeIf { it.isNotBlank() }?.let { "\n\n$it" } ?: "") +
                 (if (anr.isNullOrBlank()) freeze?.let { "\n\n$it" } ?: "" else "")
             Sheet.confirm(this, "התוכנה נסגרה בפעם הקודמת", details + "\n\nאפשר להעתיק את הפרטים ולשלוח למפתח.", "העתקת הפרטים") {

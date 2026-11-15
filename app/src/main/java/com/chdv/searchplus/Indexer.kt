@@ -86,6 +86,7 @@ object Indexer {
     fun extractFast(c: Context, f: File): List<String?> {
         val raw = PdfText.pages(c, f) { Progress.cancel }
         if (raw != null) return raw.map { r -> r?.let { prepare(it) } }
+        if (f.length() > 80L * 1024 * 1024) throw IllegalStateException("קובץ גדול מדי לקריאה במנוע הגיבוי")
         return extract(f)
     }
 
@@ -142,6 +143,13 @@ object Indexer {
         // books that were deleted or are outside the library folders now
         known.values.filter { it.path !in found }.forEach { db.removeFile(it.id) }
 
+        // a book that was being read when the device closed the app (out of memory): skip it, so
+        // the scan is not stopped by the same book again and again (it can be read later from its menu)
+        Prefs.l("scanFile", 0L).takeIf { it > 0 }?.let { bad ->
+            db.markError(bad, "כבד מדי למכשיר – המכשיר סגר את התוכנה בזמן הקריאה שלו")
+            Prefs.commit("scanFile", 0L)
+        }
+
         // 2. read text
         // small books first: within minutes most of the library is searchable; big ones follow
         val pending = db.pendingFiles().sortedBy { (_, p) -> File(p).length() }
@@ -150,16 +158,22 @@ object Indexer {
             if (Progress.cancel) return
             Progress.waitWhilePaused()
             Progress.current = File(path).name
+            // written to disk at once: if the app is killed now, the next run knows which book did it
+            Prefs.commit("scanFile", id)
             try {
                 val texts = extractFast(c, File(path))
                 db.saveBook(id, texts)
+                if (Progress.done == 20) Prefs.put("someRead", true)
             } catch (e: OutOfMemoryError) {
                 System.gc()
                 db.markError(id, "הקובץ גדול מדי לזיכרון המכשיר")
             } catch (e: Throwable) {
                 db.markError(id, e.javaClass.simpleName + ": " + (e.message ?: ""))
             }
+            Prefs.commit("scanFile", 0L)
             Progress.done++
+            // memory back to the system between books (a 2GB device has little to spare)
+            if (Progress.done % 25 == 0) System.gc()
         }
 
         // the library has been read once – from now on only new or changed books are read
@@ -485,6 +499,7 @@ class IndexService : Service() {
                 ui { stopForeground(true); stopSelf() }
             }
         }.start()
-        return START_NOT_STICKY
+        // if the system closes the app (memory), it brings the scan back by itself
+        return if (Prefs.b("firstScanDone", false)) START_NOT_STICKY else START_STICKY
     }
 }
