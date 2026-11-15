@@ -47,6 +47,7 @@ object Library {
      * first level is the library folder itself.
      */
     fun categoryOf(dir: String): List<String> {
+        if (dir.startsWith(Cloud.ROOT)) return dir.split('/').filter { it.isNotEmpty() }
         val root = rootOf(dir) ?: return listOf(File(dir).name)
         val rel = dir.removePrefix(root).trim('/')
         val parts = if (rel.isEmpty()) emptyList() else rel.split('/')
@@ -210,6 +211,8 @@ object Library {
      * are copied, so they can be pasted into the reader's own search to mark them.
      */
     fun openExternal(a: Activity, path: String, page: Int, terms: List<String> = emptyList(), chooser: Boolean = false, phrase: String? = null) {
+        // a book in Google Drive: the other app gets the downloaded copy
+        if (Cloud.isCloud(path)) { Cloud.open(a, path) { f -> openExternal(a, f.absolutePath, page, terms, chooser, phrase) }; return }
         // the app can't be told the page and the words: give it the found page, marked, as a small PDF
         // also for a place without search words (ליקוטי שיחות חלק כד עמוד 358): the app gets that page first
         if ((terms.isNotEmpty() || phrase != null || page > 1) && Prefs.b("excerpt", true)) {

@@ -466,7 +466,7 @@ class MainActivity : BaseActivity() {
         // continue where you stopped
         Library.recent().firstOrNull()?.let { k ->
             val p = k.substringBefore('|'); val pg = k.substringAfter('|').toIntOrNull() ?: 1
-            if (File(p).exists()) homeBox.addView(hbox().apply {
+            if (Cloud.isCloud(p) || File(p).exists()) homeBox.addView(hbox().apply {
                 setPadding(dp(14), dp(12), dp(14), dp(12))
                 background = pressBg(Col.CARD, Col.ACC_LIGHT, 16, dp(1.5f), Col.ACC)
                 if (!Col.isEink) elevation = dp(2).toFloat()

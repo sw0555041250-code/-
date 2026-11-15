@@ -17,9 +17,9 @@ import java.net.URLEncoder
 
 /**
  * "Connect Google Drive": the app asks the user to sign in with their Google account and allow
- * reading their Drive. Then it finds every PDF there (with its folders), the user chooses what to
- * bring, and the books are downloaded into the cloud library folder on the device and scanned like
- * any other book – so searching and answers happen on the device. Read-only: nothing in Drive is changed.
+ * reading their Drive. Then it finds every PDF there – their own and those shared with them – the user
+ * chooses folders, and those books are searched from the cloud (see Cloud: scanned for a moment, only
+ * the text is kept). Read-only: nothing in Drive is changed.
  *
  * Works when the developer registered the app with Google once (package name + signing fingerprint,
  * Drive API enabled) – see docs/GOOGLE_DRIVE_SETUP.md.
@@ -72,7 +72,7 @@ object DriveSync {
         if (notRegistered) {
             Sheet.confirm(a, "Google עוד לא מכירה את חיפוש פלוס",
                 "כדי שהתוכנה תוכל לקרוא את ה-Drive, צריך לרשום אותה פעם אחת אצל Google (כ-10 דקות, עם חשבון Google של בעל התוכנה). אחרי זה החיבור עובד לכל מי שמשתמש בה.\n\n" +
-                    "בינתיים אפשר להביא ספרים מה-Drive בלי חיבור: \"בחירת ספרים מ-Drive\" – נכנסים לתיקייה, ⋮ › \"בחירת הכול\"." +
+                    "בינתיים אפשר להביא ספרים מה-Drive למכשיר בלי חיבור: \"בחירת ספרים (PDF או ZIP)\"." +
                     (if (msg.isNotEmpty()) "\n\n($msg)" else ""), "להוראות הרישום") {
                 if (!a.safeStart(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(SETUP)))) a.toast(SETUP)
             }
@@ -135,6 +135,26 @@ object DriveSync {
             f.optString("size").toLongOrNull() ?: 0L, f.optString("modifiedTime")) }
     }
 
+    /** One file from Drive to [dest] (on the device), with the percent done. */
+    fun downloadId(token: String, id: String, dest: File, progress: (Int) -> Unit = {}) {
+        val c = get("$API/$id?alt=media&supportsAllDrives=true", token)
+        val tmp = File(dest.parentFile, dest.name + ".part")
+        try {
+            val total = c.contentLength.toLong()
+            var done = 0L; var last = -1
+            c.inputStream.use { i -> FileOutputStream(tmp).use { o ->
+                val buf = ByteArray(1 shl 16)
+                while (true) {
+                    val n = i.read(buf); if (n < 0) break
+                    o.write(buf, 0, n); done += n
+                    if (total > 0) { val p = (done * 100 / total).toInt(); if (p != last) { last = p; progress(p) } }
+                }
+            } }
+        } finally { c.disconnect() }
+        if (dest.exists()) dest.delete()
+        if (!tmp.renameTo(dest)) throw java.io.IOException("rename")
+    }
+
     fun download(token: String, it: Item, dest: File) {
         val c = get("$API/${it.id}?alt=media&supportsAllDrives=true", token)
         val tmp = File(dest.parentFile, dest.name + ".part")
@@ -146,8 +166,14 @@ object DriveSync {
     private fun safe(s: String) = s.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim().ifEmpty { "ספר" }
 
     /** The whole flow: connect → list → choose folders → download new/changed books → scan. */
-    fun run(a: Activity, dir: File, done: () -> Unit) {
+    /**
+     * Connect (Google's own permission screen the first time), read the list of books in Drive, let the
+     * user choose folders – and search in them from the cloud: the scan reads each book for a moment and
+     * keeps only its text. Nothing is downloaded to stay on the device.
+     */
+    fun run(a: Activity, done: () -> Unit) {
         connect(a) { token ->
+            Cloud.keep(token)
             val st = a.label("מתחבר…", 15f, Col.SUB)
             val d = Sheet.make(a, a.vbox().apply { setPadding(a.dp(18), a.dp(18), a.dp(18), a.dp(18)); addView(a.label("☁ קורא את ה-Drive שלך", 18f, Col.TEXT, true)); addView(st) })
             d.setCancelable(false); d.show()
@@ -157,33 +183,43 @@ object DriveSync {
                 }
                 ui {
                     d.dismiss()
-                    if (items.isEmpty()) { Sheet.info(a, "לא נמצאו ספרים", "ב-Google Drive שלך אין קבצי PDF."); return@ui }
-                    choose(a, items) { chosen -> fetch(a, token, chosen, dir, done) }
+                    if (items.isEmpty()) { Sheet.info(a, "לא נמצאו ספרים", "ב-Google Drive שלך (וגם במה ששיתפו איתך) אין קבצי PDF."); return@ui }
+                    choose(a, items) { chosen ->
+                        val groups = chosen.map { groupOf(it) }.distinct()
+                        Prefs.putList("driveSel", groups)
+                        Prefs.put("driveOn", true)
+                        Prefs.put("driveCount", chosen.size)
+                        Indexer.start(a, user = true)
+                        Sheet.info(a, "מחובר ✓", "${chosen.size} ספרים מ-Drive ייסרקו מהענן – הם נשארים ב-Drive, ורק הטקסט נשמר במכשיר.\n" +
+                            "אפשר לחפש בהם כבר עכשיו, ובכל ספר שנסרק. בפתיחה – הספר יורד לרגע לקריאה.")
+                        done()
+                    }
                 }
             }.start()
         }
     }
 
-    /** Folder checklist (top-level folders), with how many books and how big. */
+    /** The folder a book is chosen by: a top folder of my Drive, or each folder shared with me ("משותף איתי › …"). */
+    fun groupOf(i: Item): String {
+        val parts = i.folder.split('/').filter { it.isNotEmpty() }
+        return when {
+            parts.isEmpty() -> "(ראשי)"
+            parts[0] == "משותף איתי" -> if (parts.size > 1) "משותף איתי › " + parts[1] else "משותף איתי"
+            else -> parts[0]
+        }
+    }
+
     private fun choose(a: Activity, items: List<Item>, go: (List<Item>) -> Unit) {
-        // each folder that was shared with me is its own choice ("משותף איתי › …")
-        val groups = items.groupBy { i ->
-            val parts = i.folder.split('/').filter { it.isNotEmpty() }
-            when {
-                parts.isEmpty() -> "(ראשי)"
-                parts[0] == "משותף איתי" -> if (parts.size > 1) "משותף איתי › " + parts[1] else "משותף איתי"
-                else -> parts[0]
-            }
-        }.toSortedMap()
+        val groups = items.groupBy { groupOf(it) }.toSortedMap()
         val box = a.vbox().apply { setPadding(a.dp(18), a.dp(16), a.dp(18), a.dp(14)) }
         box.addView(a.label("נמצאו ${items.size} ספרים (${human(items.sumOf { it.size })})", 18f, Col.TEXT, true))
-        box.addView(a.label("בחרו אילו תיקיות להביא למכשיר. ספרים שכבר הובאו לא יורדים שוב.", 14f, Col.SUB).apply { setPadding(0, a.dp(4), 0, a.dp(8)) })
+        box.addView(a.label("בחרו באילו תיקיות לחפש. הספרים נשארים ב-Drive – הם נסרקים מהענן, ורק הטקסט נשמר במכשיר.", 14f, Col.SUB).apply { setPadding(0, a.dp(4), 0, a.dp(8)) })
         val checks = ArrayList<Pair<CheckBox, List<Item>>>()
         val list = a.vbox()
         for ((name, l) in groups) {
             val cb = CheckBox(a).apply {
                 text = "📁 $name  ·  ${l.size} ספרים · ${human(l.sumOf { it.size })}"
-                isChecked = true; textSize = 15f * scale(); setTextColor(Col.TEXT)
+                isChecked = Cloud.chosen().let { it.isEmpty() || name in it }; textSize = 15f * scale(); setTextColor(Col.TEXT)
                 layoutDirection = View.LAYOUT_DIRECTION_RTL
             }
             list.addView(cb); checks.add(cb to l)
@@ -191,43 +227,10 @@ object DriveSync {
         box.addView(android.widget.ScrollView(a).apply { addView(list) }, lp(MATCH, a.dp(300)))
         lateinit var dlg: android.app.Dialog
         val row = a.hbox()
-        row.addView(a.pill("הבאה") { dlg.dismiss(); go(checks.filter { it.first.isChecked }.flatMap { it.second }) }, lp(0, WRAP, 1f).m(a.dp(4), a.dp(10), a.dp(4), 0))
+        row.addView(a.pill("לחפש בתיקיות האלה") { dlg.dismiss(); go(checks.filter { it.first.isChecked }.flatMap { it.second }) }, lp(0, WRAP, 1f).m(a.dp(4), a.dp(10), a.dp(4), 0))
         row.addView(a.pill("ביטול", false) { dlg.dismiss() }, lp(0, WRAP, 1f).m(a.dp(4), a.dp(10), a.dp(4), 0))
         box.addView(row)
         dlg = Sheet.make(a, box); dlg.show()
     }
 
-    private fun fetch(a: Activity, token: String, items: List<Item>, dir: File, done: () -> Unit) {
-        if (items.isEmpty()) return
-        val st = a.label("", 15f, Col.SUB)
-        var stop = false
-        lateinit var dlg: android.app.Dialog
-        val box = a.vbox().apply { setPadding(a.dp(18), a.dp(18), a.dp(18), a.dp(14)); addView(a.label("☁ מביא ספרים מה-Drive", 18f, Col.TEXT, true)); addView(st) }
-        box.addView(a.pill("עצירה (מה שירד נשמר)", false) { stop = true }, lp(MATCH, WRAP).m(0, a.dp(12), 0, 0))
-        dlg = Sheet.make(a, box); dlg.setCancelable(false); dlg.show()
-        Thread {
-            var ok = 0; var skip = 0; var fail = 0
-            for ((k, it) in items.withIndex()) {
-                if (stop) break
-                val sub = it.folder.split('/').filter { s -> s.isNotBlank() }.joinToString("/") { s -> safe(s) }
-                val name = safe(it.name).let { n -> if (n.endsWith(".pdf", true)) n else "$n.pdf" }
-                val dest = File(if (sub.isEmpty()) dir else File(dir, sub), name)
-                ui { st.text = "${k + 1} / ${items.size}\n${it.name}" }
-                try {
-                    if (dest.exists() && (it.size == 0L || dest.length() == it.size)) { skip++; continue }
-                    dest.parentFile?.mkdirs()
-                    download(token, it, dest); ok++
-                } catch (e: Throwable) { fail++ }
-            }
-            Prefs.put("driveLastSync", System.currentTimeMillis())
-            ui {
-                dlg.dismiss()
-                if (Library.roots().none { dir.absolutePath == it || dir.absolutePath.startsWith("$it/") }) Library.setRoots(Library.roots() + dir.absolutePath)
-                Indexer.start(a, user = true)
-                done()
-                Sheet.info(a, "הספרים מה-Drive הובאו ✓", "ירדו $ok ספרים" + (if (skip > 0) " · $skip כבר היו" else "") + (if (fail > 0) " · $fail לא ירדו" else "") +
-                    ".\n\nהם בתיקיות כמו ב-Drive, נכנסו למאגר ונסרקים עכשיו ברקע. לסנכרון ספרים חדשים – לוחצים שוב \"חיבור ל-Google Drive\".")
-            }
-        }.start()
-    }
 }

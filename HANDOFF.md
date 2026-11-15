@@ -130,6 +130,8 @@
 
 - הסריקה נעצרת שוב ושוב ב-BOOX (דווח 15.11): נוספו `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` + כרטיס "שלב 3" ו-`Indexer.askBackground`; הפעלה מחדש אוטומטית מה-tick של MainActivity (פעם בדקה, עד סוף הסריקה הראשונה, אלא אם המשתמש עצר – `scanStoppedByUser`, `Indexer.start(user = true)`); בהגדרות › מצב הסריקה – היסטוריית העצירות של `:scan` (ApplicationExitInfo: סיבה, PSS) ו-`lastKilled`. לברר מהצילום של בעל הפרויקט מה הסיבה בפועל.
 
+- **Drive בענן (Cloud.kt):** ספרי Drive נשמרים במסד כ-`drive:<fileId>/<name>`, תיקייה `☁ Google Drive/<נתיב>` (משותפים: `משותף איתי/...`). `Cloud.sync` (בסריקה, אם `driveOn`) מתאים את המסד לתיקיות שנבחרו (`driveSel` = שמות קבוצות של `DriveSync.groupOf`). קריאה: `Cloud.withTemp` (הורדה זמנית ומחיקה); OCR: `tempCopy/dropTemp`; פתיחה: `Cloud.open` → cache `cacheDir/drive` עד 300MB. מפתח: `Cloud.token` (AuthorizationClient שקט; null = צריך לאשר שוב במסך Drive). בלי אינטרנט/מפתח – ספרי Drive נשארים ממתינים (לא שגיאה). Organizer מתעלם מהם. **החיבור עצמו דורש רישום OAuth (docs/GOOGLE_DRIVE_SETUP.md) – עוד לא נעשה (15.11).**
+
 ## 5. החלטות חשובות – ולמה
 
 1. **שמות מהמכשיר, לא רשימה קבועה** – הבקשה מותאמת לשמות התיקיות והקבצים שנמצאו בסריקה (`Names`). שינוי שם תיקייה + סריקה = מוכר מיד. הרשימות הקבועות (`Works`, `Abbr`) רק עוזרות.

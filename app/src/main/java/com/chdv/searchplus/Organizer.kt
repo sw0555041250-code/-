@@ -327,8 +327,9 @@ object Organizer {
         val files: List<Pair<String, String>> = when {
             sourceDir != null -> (File(sourceDir).listFiles()?.filter { it.isFile && it.name.endsWith(".pdf", true) } ?: emptyList())
                 .map { it.absolutePath to it.nameWithoutExtension }
-            checkAll -> Db.get().books().values.map { it.path to it.title }
-            else -> Db.get().books().values.filter { Library.categoryOf(it.dir).let { cat -> cat.isEmpty() || (Library.roots().size > 1 && cat.size == 1) } }
+            // books in Google Drive are not moved or renamed (read-only)
+            checkAll -> Db.get().books().values.filter { !Cloud.isCloud(it.path) }.map { it.path to it.title }
+            else -> Db.get().books().values.filter { !Cloud.isCloud(it.path) && Library.categoryOf(it.dir).let { cat -> cat.isEmpty() || (Library.roots().size > 1 && cat.size == 1) } }
                 .map { it.path to it.title }
         }
         val out = ArrayList<Suggestion>()

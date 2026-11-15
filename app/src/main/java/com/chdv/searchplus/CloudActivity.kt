@@ -45,12 +45,13 @@ class CloudActivity : BaseActivity() {
             setPadding(dp(18), dp(18), dp(18), dp(18))
         }
         head.addView(label("☁ ספרים מ-Google Drive", 21f, android.graphics.Color.WHITE, true))
-        head.addView(label("יש לכם מאגר ספרים בדרייב? מביאים אותו פעם אחת למכשיר – ומאז מחפשים בו כמו בכל ספר, גם בלי אינטרנט.", 14.5f, 0xEEFFFFFF.toInt()).apply { setPadding(0, dp(6), 0, 0) })
+        head.addView(label("מחפשים בספרים שב-Drive שלך ובתיקיות ששיתפו איתך – והם נשארים בענן. רק הטקסט נשמר במכשיר (קטן), וספר נפתח בהורדה לרגע.", 14.5f, 0xEEFFFFFF.toInt()).apply { setPadding(0, dp(6), 0, 0) })
         box.addView(head, lp(MATCH, WRAP).m(0, dp(4), 0, dp(14)))
 
-        box.addView(pill("🔗 חיבור לחשבון Google Drive") { DriveSync.run(this, cloudDir(this)) { refresh() } }, lp(MATCH, WRAP).m(0, dp(4), 0, dp(2)))
-        box.addView(label("מתחברים פעם אחת עם חשבון Google ומאשרים קריאה. התוכנה מוצאת את כל ספרי ה-PDF ב-Drive, אתם בוחרים תיקיות – והם יורדים למכשיר ונסרקים. רק קריאה: שום דבר ב-Drive לא משתנה.", 13.5f, Col.SUB).apply { setPadding(dp(4), 0, dp(4), dp(12)) })
-        box.addView(label("או בלי חיבור חשבון (עובד תמיד):", 14f, Col.ACC, true).apply { setPadding(0, dp(4), 0, dp(2)) })
+        status = vbox()
+        box.addView(status, lp(MATCH, WRAP))
+        box.addView(label("מתחברים פעם אחת עם חשבון Google ומאשרים קריאה. התוכנה מוצאת את כל ספרי ה-PDF – ב-Drive שלך וגם מה ששיתפו איתך – אתם בוחרים תיקיות, והן נסרקות מהענן. רק קריאה: שום דבר ב-Drive לא משתנה, ושום ספר לא נשאר במכשיר.", 13.5f, Col.SUB).apply { setPadding(dp(4), dp(4), dp(4), dp(12)) })
+        box.addView(label("או להביא ספרים למכשיר (בלי חיבור חשבון):", 14f, Col.ACC, true).apply { setPadding(0, dp(4), 0, dp(2)) })
         box.addView(pill("📄 בחירת ספרים (PDF או ZIP)", false) { pickFiles() }, lp(MATCH, WRAP).m(0, dp(4), 0, dp(4)))
         box.addView(label("⭐ תיקייה שלמה מ-Drive (גם תיקייה ששיתפו איתך): באפליקציית Drive לוחצים ⋮ ליד התיקייה › \"הורדה\" – היא יורדת כקובץ ZIP. ואז כאן \"בחירת ספרים\" ובוחרים את ה-ZIP (בתיקיית ההורדות) – כל הספרים נכנסים, עם התיקיות שלהם.\n" +
             "או: נכנסים לתיקייה בחלון הבחירה, לחיצה ארוכה על ספר, ⋮ › \"בחירת הכול\" › \"בחירה\".", 13.5f, Col.SUB).apply { setPadding(dp(4), 0, dp(4), dp(8)) })
@@ -71,10 +72,48 @@ class CloudActivity : BaseActivity() {
         refresh()
     }
 
+    private lateinit var status: LinearLayout
+
     private fun refresh() {
         val d = cloudDir(this)
         val n = d.walkTopDown().count { it.isFile && it.name.endsWith(".pdf", true) }
-        info.text = if (n == 0) "עוד לא הובאו ספרים." else "📚 $n ספרים הובאו מהענן · נשמרים ב: ${d.absolutePath}"
+        info.text = if (n == 0) "" else "📚 $n ספרים הובאו למכשיר · ב: ${d.absolutePath}"
+        // connected to Drive: what is searched, and the ways to change it
+        status.removeAllViews()
+        if (!Cloud.connected()) {
+            status.addView(pill("🔗 חיבור לחשבון Google Drive") { DriveSync.run(this) { refresh() } }, lp(MATCH, WRAP).m(0, dp(4), 0, dp(2)))
+            return
+        }
+        val st = label("☁ מחובר ל-Google Drive", 16f, Col.TEXT, true)
+        val sub = label("…", 13.5f, Col.SUB)
+        status.addView(vbox().apply {
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = roundBg(Col.ACC_LIGHT, dp(14).toFloat(), dp(1), Col.ACC)
+            addView(st); addView(sub)
+        }, lp(MATCH, WRAP).m(0, dp(4), 0, dp(6)))
+        Thread {
+            val all = try { Db.get().books().values.filter { Cloud.isCloud(it.path) } } catch (e: Throwable) { emptyList() }
+            val done = all.count { it.status == St.DONE }
+            val cache = Cloud.cacheSize(this) / 1048576
+            ui {
+                sub.text = "תיקיות: " + Cloud.chosen().joinToString(" · ").ifEmpty { "הכול" } +
+                    "\n${all.size} ספרים מ-Drive · נסרקו $done" + (if (all.size > done) " (הסריקה ממשיכה ברקע)" else " ✓") +
+                    "\nספרים שנפתחו לאחרונה שמורים זמנית: ${cache}MB (עד 300MB, נמחקים לבד)"
+            }
+        }.start()
+        val row = hbox()
+        row.addView(pill("📁 בחירת תיקיות", false) { DriveSync.run(this) { refresh() } }, lp(0, WRAP, 1f).m(0, 0, dp(4), 0))
+        row.addView(pill("ניתוק", false) {
+            Sheet.confirm(this, "ניתוק מ-Google Drive", "הספרים מ-Drive יוסרו מהחיפוש (ב-Drive עצמו לא משתנה דבר).", "ניתוק") {
+                Prefs.put("driveOn", false); Prefs.put("driveSel", "")
+                Thread {
+                    try { Db.get().books().values.filter { Cloud.isCloud(it.path) }.forEach { Db.get().removeFile(it.id) } } catch (e: Throwable) {}
+                    Cloud.clearCache(this)
+                    ui { refresh() }
+                }.start()
+            }
+        }, lp(0, WRAP, 1f).m(dp(4), 0, 0, 0))
+        status.addView(row, lp(MATCH, WRAP).m(0, 0, 0, dp(4)))
     }
 
     private fun pickFiles() {

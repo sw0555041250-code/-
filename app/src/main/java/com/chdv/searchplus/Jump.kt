@@ -106,7 +106,7 @@ object Jump {
             out.add(Target(b, pg, true, ref, null) to score)
         }
         // books the scan has not read yet: their headers, now (a few, the best named ones)
-        val unread = cands.filter { it.status != St.DONE || it.textPages == 0 }.take(if (!deep) 0 else if (ref.volume != null) 4 else 3)
+        val unread = cands.filter { (it.status != St.DONE || it.textPages == 0) && !Cloud.isCloud(it.path) }.take(if (!deep) 0 else if (ref.volume != null) 4 else 3)
         // reading books now takes time: at most ~15 seconds for all of them
         val until = System.currentTimeMillis() + 15_000
         for ((k, b) in unread.withIndex()) {
@@ -145,7 +145,7 @@ object Jump {
 
     private fun locate(b: Book, ref: Ref, deep: Boolean = true, stop: () -> Boolean = { false }): Target {
         // a book the scan has not reached yet: read its headers now (fast native reader)
-        val pages = Db.get().pageTexts(b.id).ifEmpty { if (deep && needsPages(ref)) PdfText.heads(App.ctx, java.io.File(b.path), stop) else emptyMap() }
+        val pages = Db.get().pageTexts(b.id).ifEmpty { if (deep && needsPages(ref) && !Cloud.isCloud(b.path)) PdfText.heads(App.ctx, java.io.File(b.path), stop) else emptyMap() }
         val count = b.pages.coerceAtLeast(1)
         when (ref.kind) {
             Ref.Kind.GEMARA -> {

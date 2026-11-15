@@ -42,6 +42,11 @@ class ReaderActivity : BaseActivity() {
                 Library.chooseDefault(c) { open(c, path, page, terms, hits, refLabel, amudIndex, exact, phrase) }
                 return
             }
+            // a book in Google Drive: downloaded first (the last ones opened stay in a small cache)
+            if (Cloud.isCloud(path) && c is android.app.Activity && Cloud.cached(c, path) == null) {
+                Cloud.open(c, path) { open(c, path, page, terms, hits, refLabel, amudIndex, exact, phrase) }
+                return
+            }
             if (Prefs.s("openWith", "internal") == "external" && c is android.app.Activity) {
                 Library.addRecent(path, page)
                 Library.openExternal(c, path, page, terms, chooser = false, phrase = phrase)
@@ -58,6 +63,8 @@ class ReaderActivity : BaseActivity() {
 
     private val exec = Executors.newSingleThreadExecutor()
     private var path: String? = null
+    /** The file on the device ([path] itself, or the downloaded copy of a Drive book). */
+    private val file: String? get() = path?.let { p -> if (Cloud.isCloud(p)) Cloud.cached(this, p)?.absolutePath ?: p else p }
     private var pfd: ParcelFileDescriptor? = null
     private var renderer: PdfRenderer? = null
     private var doc: PDDocument? = null
@@ -90,7 +97,7 @@ class ReaderActivity : BaseActivity() {
 
         build()
         try {
-            pfd = if (path != null) ParcelFileDescriptor.open(File(path!!), ParcelFileDescriptor.MODE_READ_ONLY)
+            pfd = if (path != null) ParcelFileDescriptor.open(File(file!!), ParcelFileDescriptor.MODE_READ_ONLY)
             else contentResolver.openFileDescriptor(uri!!, "r")
             renderer = PdfRenderer(pfd!!)
             pageCount = renderer!!.pageCount
@@ -222,7 +229,7 @@ class ReaderActivity : BaseActivity() {
      * searched word.
      */
     private fun highlights(p: Int, scale: Float, bmpW: Int = 0): List<RectF> {
-        val d = doc ?: Indexer.loadDoc(File(path!!)).also { doc = it }
+        val d = doc ?: Indexer.loadDoc(File(file!!)).also { doc = it }
         val plain = PDFTextStripper().apply { startPage = p; endPage = p }
         val raw = plain.getText(d)
         val method = Heb.repairPage(raw).method
@@ -261,7 +268,7 @@ class ReaderActivity : BaseActivity() {
         if (words.size < 5 && bmpW > 0) {
             ui { toast("מחפש את המילים בעמוד הסרוק…") }
             words.clear()
-            words.addAll(Ocr.wordBoxes(this, path!!, p - 1, bmpW))
+            words.addAll(Ocr.wordBoxes(this, file!!, p - 1, bmpW))
         }
 
         val ph = phrase?.takeIf { p == phrasePage }?.let { Heb.words(it).filter { w -> w.length > 1 } } ?: emptyList()
@@ -352,7 +359,7 @@ class ReaderActivity : BaseActivity() {
             items.add("העתקת הטקסט של העמוד" to { copyPage() })
             items.add("שיתוף הקובץ" to {
                 val i = Intent(Intent.ACTION_SEND).setType("application/pdf")
-                    .putExtra(Intent.EXTRA_STREAM, Library.uriFor(this, File(p)))
+                    .putExtra(Intent.EXTRA_STREAM, Library.uriFor(this, File(file ?: p)))
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 safeStart(Intent.createChooser(i, "שיתוף"))
             })

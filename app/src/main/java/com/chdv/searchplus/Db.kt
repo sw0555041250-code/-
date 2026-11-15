@@ -132,6 +132,34 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "index.db", null,
         return id
     }
 
+    /** A book that stays in Google Drive (see Cloud). */
+    fun addCloud(path: String, dir: String, name: String, size: Long, mtime: Long): Long {
+        val v = ContentValues().apply {
+            put("path", path); put("dir", dir); put("name", name)
+            put("size", size); put("mtime", mtime); put("status", St.PENDING)
+        }
+        val id = writableDatabase.insertWithOnConflict("files", null, v, SQLiteDatabase.CONFLICT_IGNORE)
+        invalidate()
+        return id
+    }
+
+    /** A Drive book moved to another folder, or changed (then it is read again). */
+    fun updateCloud(fileId: Long, dir: String, size: Long, mtime: Long, changed: Boolean) {
+        if (changed) clearContent(fileId)
+        writableDatabase.execSQL(
+            if (changed) "UPDATE files SET dir=?, size=?, mtime=?, status=${St.PENDING}, pages=0, textPages=0, emptyPages=0, emb=0, err=NULL WHERE id=?"
+            else "UPDATE files SET dir=?, size=?, mtime=? WHERE id=?",
+            arrayOf(dir, size, mtime, fileId))
+        invalidate()
+    }
+
+    /** Read this book again (its text is cleared). */
+    fun markPending(fileId: Long) {
+        clearContent(fileId)
+        writableDatabase.execSQL("UPDATE files SET status=?, pages=0, textPages=0, emptyPages=0, emb=0, err=NULL WHERE id=?", arrayOf(St.PENDING, fileId))
+        invalidate()
+    }
+
     fun clearContent(fileId: Long) {
         val db = writableDatabase
         db.beginTransaction()

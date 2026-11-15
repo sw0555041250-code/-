@@ -222,8 +222,13 @@ object Indexer {
             Progress.done = found.size
         }, { Progress.cancel })
         if (Progress.cancel) return
-        // books that were deleted or are outside the library folders now
-        known.values.filter { it.path !in found }.forEach { db.removeFile(it.id) }
+        // books that were deleted or are outside the library folders now (Drive books are checked with Drive)
+        known.values.filter { it.path !in found && !Cloud.isCloud(it.path) }.forEach { db.removeFile(it.id) }
+        // books in Google Drive: the chosen folders, from the cloud
+        if (Cloud.connected()) {
+            Progress.phase = "בודק את Google Drive…"
+            Cloud.sync(c, db)
+        }
 
         // a book that was being read when the device closed the app (out of memory): skip it, so
         // the scan is not stopped by the same book again and again (it can be read later from its menu)
@@ -235,21 +240,33 @@ object Indexer {
 
         // 2. read text
         // small books first: within minutes most of the library is searchable; big ones follow
-        val pending = db.pendingFiles().sortedBy { (_, p) -> File(p).length() }
+        val sizes = db.books().mapValues { it.value.size }
+        val pending = db.pendingFiles().sortedBy { (id, p) -> if (Cloud.isCloud(p)) (sizes[id] ?: 0L) + (1L shl 40) else File(p).length() }
         Progress.phase = "קורא ספרים"; Progress.total = pending.size; Progress.done = 0
+        var cloudOk = true
         for ((id, path) in pending) {
             if (Progress.cancel) return
             Progress.waitWhilePaused()
-            Progress.current = File(path).name
+            // Drive books need internet and the user's permission: without them they wait for the next scan
+            if (Cloud.isCloud(path)) {
+                if (!cloudOk || !Cloud.connected()) { Progress.done++; continue }
+                if (Cloud.token(c) == null) { cloudOk = false; Progress.done++; continue }
+            }
+            Progress.current = (if (Cloud.isCloud(path)) "☁ " else "") + File(path).name
             // written to disk at once: if the app is killed now, the next run knows which book did it
             Prefs.commit("scanFile", id)
             try {
-                val texts = extractFast(c, File(path))
+                // a Drive book: downloaded for a moment, read, and deleted – only its text stays
+                val texts = if (Cloud.isCloud(path)) Cloud.withTemp(c, path) { f -> extractFast(c, f) } else extractFast(c, File(path))
                 db.saveBook(id, texts)
                 if (Progress.done == 20) Prefs.put("someRead", true)
             } catch (e: OutOfMemoryError) {
                 System.gc()
                 db.markError(id, "הקובץ גדול מדי לזיכרון המכשיר")
+            } catch (e: java.io.IOException) {
+                // no internet for a Drive book: not an error of the book – it waits for the next scan
+                if (Cloud.isCloud(path) && e.message?.let { it.startsWith("Drive 4") && !it.startsWith("Drive 401") } != true) cloudOk = false
+                else db.markError(id, e.javaClass.simpleName + ": " + (e.message ?: ""))
             } catch (e: Throwable) {
                 db.markError(id, e.javaClass.simpleName + ": " + (e.message ?: ""))
             }
@@ -284,8 +301,7 @@ object Indexer {
 
     /** Re-read one book now (from the book menu). */
     fun reindex(c: Context, b: Book) {
-        val f = File(b.path)
-        Db.get().markChanged(b.id, f)
+        if (Cloud.isCloud(b.path)) Db.get().markPending(b.id) else Db.get().markChanged(b.id, File(b.path))
         start(c, user = true)
     }
 }
@@ -330,6 +346,7 @@ object Ocr {
                 var lastFile = -1L
                 var renderer: PdfRenderer? = null
                 var pfd: ParcelFileDescriptor? = null
+                var cloudTmp: File? = null
                 try {
                     for ((pageId, fileId, page) in batch) {
                         if (Progress.cancel) break
@@ -341,8 +358,11 @@ object Ocr {
                         if (Prefs.l("ocrPage", 0L) == pageId) { db.saveOcr(pageId, fileId, null); Prefs.commit("ocrPage", 0L); continue }
                         Prefs.commit("ocrPage", pageId)
                         if (fileId != lastFile) {
-                            renderer?.close(); pfd?.close()
-                            pfd = ParcelFileDescriptor.open(File(b.path), ParcelFileDescriptor.MODE_READ_ONLY)
+                            renderer?.close(); pfd?.close(); Cloud.dropTemp(cloudTmp); cloudTmp = null
+                            // a Drive book: on the device only while its pages are read
+                            // (no internet / no key: OCR of Drive books waits for the next scan)
+                            val local = if (Cloud.isCloud(b.path)) (try { Cloud.tempCopy(c, b.path) } catch (e: Throwable) { return }).also { cloudTmp = it } else File(b.path)
+                            pfd = ParcelFileDescriptor.open(local, ParcelFileDescriptor.MODE_READ_ONLY)
                             renderer = PdfRenderer(pfd)
                             lastFile = fileId
                         }
@@ -354,6 +374,7 @@ object Ocr {
                 } finally {
                     try { renderer?.close() } catch (e: Exception) {}
                     try { pfd?.close() } catch (e: Exception) {}
+                    Cloud.dropTemp(cloudTmp)
                 }
             }
         } finally {
