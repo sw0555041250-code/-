@@ -1,65 +1,183 @@
-# חיפוש פלוס (Search Plus): מסמך המשך עבודה למפתח או ל-Claude Code
+# חיפוש פלוס – כל מה שצריך לדעת כדי להמשיך
 
-אפליקציית אנדרואיד לחיפוש מעמיק בתוך ספרי PDF שבמכשיר (כולל כרטיס זיכרון): חיפוש מילים, חיפוש לפי משמעות (AI על המכשיר), קטגוריות לפי תיקיות, קורא מובנה שפותח בעמוד ומסמן את המילים.
-מותאמת ל-**BOOX Go 6** (E-ink, ‏Android 11, ‏2GB RAM). החבילה: `com.chdv.searchplus`. המאגר: `github.com/sw0555041250-code/Search-Plus-` (פומבי). פותח: שניאור וילהלם.
+> **ל-Claude Code / למפתח שממשיך:** קרא את כל המסמך לפני שאתה נוגע בקוד. יש בו את הרקע, ההחלטות ולמה התקבלו, מה נבדק ומה לא,
+> מה עוד פתוח, ואיך לעבוד מול בעל הפרויקט. משפט הפתיחה המומלץ: "קרא את HANDOFF.md והמשך מכאן: <מה רוצים>".
 
-**כדי להמשיך לעבוד עם Claude Code:** פותחים סשן עם המאגר הזה, ואומרים "קרא את HANDOFF.md והמשך מכאן: <מה רוצים>". כל קוד המקור נמצא גם בקובץ `SearchPlus-full-source.md`.
+---
 
-## בנייה ופרסום
-- אין צורך ב-Android Studio. כל push ל-`main` מפעיל את `.github/workflows/build-apk.yml`: מוריד את מודל ה-OCR העברי (`heb.traineddata` מ-tessdata_fast) לתוך `app/src/main/assets/tessdata`, בונה APK חתום (release), ומפרסם Release ‏`v1.0.<run_number>` עם `SearchPlus.apk` (סימון latest).
-- **בנייה שנכשלה:** נוצר pre-release בשם `build-log` עם `build-log.txt` (שגיאות קומפילציה).
-- **חתימה:** `app/searchplus.p12`, ‏PKCS12, סיסמה `searchplus123`, ‏alias `searchplus`. אסור להחליף.
-- **גרסה:** `versionName = 1.0.<GITHUB_RUN_NUMBER+100>`, ‏`versionCode = <run+100>` (‏+200 כי המאגר עבר פעמיים (`chdv770-ctrl/Search-Plus` עד 1.0.4, ואז `sw0555041250-code/-` עד 1.0.1xx) – כך כל גרסה חדשה גבוהה מהישנות ומותקנת מעליהן).
-- **ענפים:** push לכל ענף `claude/**` בונה APK לבדיקה (בלי לפרסם). רק `main` מפרסם Release.
-- **בדיקות:** `.github/workflows/test-core.yml` מוריד את המודלים האמיתיים, מייצר ערכי ייחוס עם ספריות Python הרשמיות (`tools/make_reference.py`, כולל הקלטות קול עבריות של edge-tts) ובודק מולם את מודול `core`.
-- ABI: רק `arm64-v8a` (כדי שה-APK יהיה קטן). למכשיר 32 ביט – להוסיף `armeabi-v7a` ב-`app/build.gradle.kts`.
-- ספריות: androidx core/appcompat/recyclerview, ‏`com.tom-roush:pdfbox-android` (חילוץ טקסט ומיקום אותיות), ‏`com.microsoft.onnxruntime:onnxruntime-android` (מודל המשמעות), ‏`cz.adaptech.tesseract4android` (OCR, מ-JitPack).
+## 1. מה זה, ולמי
 
-## מדריך וסרטון
-`docs/guide/guide.html` (המדריך, מודפס ל-PDF) ו-`docs/video/` (תסריט `script.json`, סצנות `video.html`, קריינות עברית `make_audio.py` עם edge-tts, הקלטה `record.js`). כל שינוי בהם ב-`main` מפעיל את `.github/workflows/make-media.yml`, שמפרסם את `SearchPlus-Guide.pdf` ו-`SearchPlus-Video.mp4` ב-Release בשם `media` (prerelease – לא משפיע על העדכונים).
+**חיפוש פלוס** – אפליקציית אנדרואיד שמחפשת בתוך כל ספרי ה-PDF שבמכשיר (זיכרון פנימי, כרטיס זיכרון, וגם ספרים שהובאו מ-Google Drive):
+- **חיפוש מילים** בתוך כל העמודים (FTS4), עם אותיות שימוש, ביטוי מדויק, כוכבית, מיקוד לפי תיקיות.
+- **קפיצה למקום** – "ברכות דף כ״ז ע״א", "לקו״ש חלק כ״ד עמוד 358", "שו״ע אדה״ז סימן רע״ח" – בכתיבה (מעבר מהיר) או בקול.
+- **חיפוש לפי משמעות / שאלה ותשובה** – מודל AI בתוך המכשיר (e5-small), ואופציונלי מודל הבנה עמוק (bge-m3).
+- **חיפוש קולי** – Whisper בתוך המכשיר (בלי אינטרנט), או שירות הדיבור של המכשיר.
+- **קורא מובנה** שנפתח בעמוד ומסמן את המילים (גם בספרים סרוקים, דרך OCR), או פתיחה ב-ReadEra וכל קורא אחר.
+- סידור המאגר (כפולים, סידור תיקיות, שמות חכמים), ספרים מ-Google Drive, רעיונות יומיים לחיפוש, ערכות נושא.
 
-## מודול core (Kotlin טהור, נבדק בלי אנדרואיד)
+**בעל הפרויקט:** שניאור וילהלם. לא מתכנת – מתאר בעברית מה הוא רוצה (לרוב בהקלטה מתומללת, עם שגיאות תמלול), בודק על המכשיר ומחזיר צילומי מסך.
+**המכשיר שלו:** BOOX Go 6 – מסך E-ink שחור-לבן, Android 11, **2GB RAM**, אחסון גדול (כרטיס 256GB), קושחה 4.2, NeoReader V3.0.
+יש לו **ReadEra** (הקורא שהוא אוהב) ואפליקציית פרדס. **כ-12,000 קבצי PDF** (ספריית חב״ד: לקוטי שיחות, אגרות קודש, תורת מנחם, ש״ס בכמה מהדורות, שו״ע אדה״ז…).
+**הקהל הרחב:** כל מי שיש לו ספרייה תורנית ב-PDF – BOOX, טלפון, טאבלט.
+
+**בקשות קבועות של בעל הפרויקט (לשמור!):**
+- עברית בכל מקום, ניסוח חם וידידותי ("✓ מצאתי לך 3 אפשרויות – באיזו לפתוח?"), לא רק "מחפש…" – תמיד להראות התקדמות.
+- **"יחי אדוננו מורנו ורבנו מלך המשיח לעולם ועד"** מופיע: באודות (בתחתית ההגדרות), בתחתית התפריט הצדדי, בתחתית מסך הבית, במדריך, בדף הנחיתה, במודעה ובסרטון.
+- **לא** לכתוב "לקראת הגאולה" (ביקש להוריד).
+- **לא** תכונת יידיש (ביקש להסיר לגמרי). **לא** מסך מילון ראשי תיבות (ביקש להסיר; ראשי התיבות נשארו רק בתוך מנוע החיפוש).
+- מייל ליצירת קשר: `sw0555041250@gmail.com` (כך הוא כתב "s.w.0555041250").
+- הוא אוהב שמוסיפים יוזמות ("תגדיל ראש"), אבל הכי חשוב לו: **שהחיפוש המהיר והקולי באמת מגיעים למקום**, ושהתוכנה לא נתקעת ולא נסגרת.
+
+---
+
+## 2. מאגרים, קישורים וגרסאות
+
+- **המאגר הפעיל:** https://github.com/sw0555041250-code/Search-Plus- (פומבי). השם בעברית "חיפוש פלוס" הפך אצל GitHub ל-`Search-Plus-`.
+- **הורדה (תמיד האחרונה):** https://github.com/sw0555041250-code/Search-Plus-/releases/latest/download/SearchPlus.apk
+- **מדריך / סרטון:** Release בשם `media` (prerelease, לא משפיע על העדכונים):
+  `.../releases/download/media/SearchPlus-Guide.pdf`, `.../releases/download/media/SearchPlus-Video.mp4`
+- **דף נחיתה פעיל:** https://claude.ai/artifact/JvCXrKjW65UB8FB3ymjUMs (Artifact של claude.ai, משותף "לכל מי שיש קישור").
+  המקור שלו = `docs/site/index.html` אחרי התאמה (ראה סעיף 9).
+- **היסטוריה:** הפרויקט התחיל ב-`chdv770-ctrl/Search-Plus` (גרסאות עד 1.0.4), עבר ל-`sw0555041250-code/-` (עד 1.0.106), ומשם ל-`Search-Plus-`.
+  המאגרים הישנים לא בשימוש. מי שהתקין מהם צריך להתקין פעם אחת ידנית מהקישור החדש (העדכון האוטומטי בודק רק את המאגר שממנו הותקן).
+- **גרסה נוכחית בזמן כתיבת המסמך:** 1.0.230.
+
+---
+
+## 3. בנייה, פרסום ובדיקות
+
+- **אין Android Studio.** כל push ל-`main` מפעיל `.github/workflows/build-apk.yml`: מוריד את `heb.traineddata` (OCR) לנכסים, בונה APK חתום, ומפרסם Release `v1.0.<run+200>` עם `SearchPlus.apk` כ-latest.
+- **גרסה:** `versionCode = GITHUB_RUN_NUMBER + 200`, `versionName = 1.0.<אותו מספר>` – ה-+200 כדי שכל גרסה חדשה תהיה גבוהה מגרסאות המאגרים הקודמים. לא לשנות.
+- **חתימה:** `app/searchplus.p12` (PKCS12), סיסמה `searchplus123`, alias `searchplus`. **אסור להחליף** – אחרת עדכונים לא יותקנו מעל.
+  SHA-1: `71:8B:76:ED:F4:A4:4E:34:9B:F6:19:A4:98:C4:C2:8F:53:63:4B:D4` (נחוץ לחיבור Google Drive).
+- **ענפים:** push לענף `claude/**` בונה APK לבדיקה בלבד (בלי Release). רק `main` מפרסם. דרך העבודה עד היום: עובדים על `claude/voice-search-fixes-w4dhmg`, ו-fast-forward ל-`main` כשמוכן.
+- **שגיאות קומפילציה:** בסוף ריצה שנכשלה יש שלב "Show compile errors" שמדפיס את שורות `e:`.
+- **בדיקות `core`** (`.github/workflows/test-core.yml`, רץ כשמשנים `core/`, `tools/`):
+  `tools/make_reference.py` מוריד את המודלים האמיתיים (Whisper base/small, e5-small, bge-m3), מייצר ערכי ייחוס בספריות Python הרשמיות
+  והקלטות קול עבריות (edge-tts, he-IL-AvriNeural), ו-`gradle :core:test` משווה אליהם. בסוף יש שלב "Summary" שמדפיס את התוצאות (מה Whisper שמע, cos של e5/bge, זמנים).
+- **ABI:** `arm64-v8a` + `armeabi-v7a` (נוסף כי ייתכן שה-BOOX רץ במצב 32 ביט). APK ≈ 31MB.
+- **ספריות:** androidx core/appcompat/recyclerview, `com.tom-roush:pdfbox-android`, `com.microsoft.onnxruntime:onnxruntime-android:1.19.2`,
+  `cz.adaptech.tesseract4android` (JitPack), `com.google.android.gms:play-services-auth` (חיבור Drive).
+- **מדיה:** `.github/workflows/make-media.yml` – בונה מחדש את המדריך (PDF מ-`docs/guide/guide.html` ב-Playwright) והסרטון
+  (`docs/video/`: `script.json` = תסריט וקריינות, `video.html` = סצנות, `make_audio.py` = קריינות edge-tts, `record.js` = הקלטת מסך) ומעלה ל-Release `media`.
+- **אתר GitHub Pages:** `.github/workflows/site.yml` דוחף את `docs/site` לענף `gh-pages`. **עדיין לא עובד** – בעל המאגר צריך:
+  Settings › Pages › Source: **Deploy from a branch** › `gh-pages` › `/(root)` › Save. עד אז משתמשים ב-Artifact (סעיף 2).
+
+### עבודה בסביבה בלי Android SDK (כמו בסשן הקודם)
+- `core` נבדק מקומית עם `kotlinc` + JUnit מ-Gradle + `onnxruntime-1.19.2.jar` (מ-Maven Central).
+- את קוד האפליקציה אפשר לבדוק לקומפילציה בלי SDK: `kotlinc` מול `org.robolectric:android-all:11-robolectric-6757853` (android.jar של API 30),
+  `pdfbox-android` (classes.jar מה-aar), ו-stubs קטנים ל-androidx/RecyclerView/tesseract/gms. זה תופס כמעט את כל השגיאות לפני push.
+- HuggingFace חסום ברשת של הסשן – את המודלים בודקים רק ב-CI.
+
+---
+
+## 4. מבנה הקוד
+
+כל הממשק בנוי בקוד (בלי XML layouts), RTL. חבילה: `com.chdv.searchplus`.
+
+### `core/` – Kotlin טהור (נבדק בלי אנדרואיד)
 | קובץ | תפקיד |
 |---|---|
-| `HebRef.kt` | `HebNum` (גימטריה, שמות אותיות כפי שאומרים אותן – "כף זין", מספרים במילים), `RefParser` (הבנת הפניה: גמרא דף/עמוד, ליקוטי שיחות חלק/פרשה/שיחה, פרק/סימן; התאמה "פונטית" לשמות מסכתות שזוהו לא נכון), `PageFinder` (סימני דף בראש העמוד, הערכת עמוד מעוגנים, כותרות פרשה/פרק, מספר כרך משם קובץ) |
-| `Whisper.kt` | `WhisperMel` (ספקטרוגרמה זהה ל-OpenAI), `WhisperTokenizer` (BPE), `Whisper` (מקודד + מפענח merged עם KV-cache, עם רמז שמות ספרים), `E5Tokenizer`/`E5Model` (מודל המשמעות) |
-| `Json.kt` | קורא JSON קטן + קריאה זורמת של אוצר המילים של e5 |
+| `HebRef.kt` | `HebNum` (גימטריה, שמות אותיות "כף זין"/"חבזין", מספרים במילים), `RefParser` (גמרא דף/עמוד, ליקוטי שיחות חלק/פרשה/שיחה/עמוד, פרק/סימן/סעיף; התאמה פונטית למסכתות), `Works` (שמות חלופיים לספרים), `PageFinder` (סימני דף בראש העמוד, מספרי עמודים מודפסים, כותרות, מספר כרך משם קובץ) |
+| `Abbr.kt` | מילון ראשי תיבות (אדה״ז, צ״צ, לקו״ש, אג״ק, שליט״א…) – `expand()` לבקשות ולשמות תיקיות |
+| `Names.kt` | **מנוע ההתאמה לשמות הספרייה**: לכל ספר – מילות השם ומילות התיקיות (עם ראשי תיבות פתוחים וכתיב חלופי). `find(request, ref)` מחזיר את הספרים המתאימים. נבדק על ספרייה מדומה של 12,000 ספרים: ~10ms לבקשה |
+| `Whisper.kt` | `WhisperMel` (זהה ל-OpenAI), `WhisperTokenizer`, `Whisper` (encoder + merged decoder עם KV-cache; `lowMemory` = טוען חצי-חצי), `E5Tokenizer`/`E5Model` (גם bge-m3 עם `cls=true`) |
+| `Json.kt` | קורא JSON קטן + קריאה זורמת של tokenizer.json |
 
-## מבנה הקוד (Kotlin, ממשק בקוד בלי XML layouts)
+### `app/`
 | קובץ | תפקיד |
 |---|---|
-| `Ui.kt` | `App` (Application), ‏`Prefs`, צבעים `Col`, עזרים (`label`, `pill`, `chip`, `vbox`/`hbox`, `FlowLayout`), ‏`BaseActivity` (כותרת + חזרה, RTL), ‏`Sheet` (חלונות: info/confirm/choice/actions/input) |
-| `Text.kt` | `Heb`: תיקון טקסט עברי – `repairPage` בוחר בין רגיל / Windows‑1255 / DOS‑862 ובין סדר רגיל להפוך (ניקוד לפי מילים נפוצות ומיקום אותיות סופיות); `clean` – הסרת ניקוד וטעמים, המרת פיסוק עברי ל-ASCII; `PREFIXES` (אותיות שימוש) |
-| `Db.kt` | SQLite: ‏`files` (ספר), ‏`pages` (עמוד: kind 0=טקסט, 1=OCR, 2=בלי טקסט – ממתין ל-OCR, 3=OCR לא מצא כלום), ‏`fts` (FTS4, ‏docid = pages.id) |
-| `Library.kt` | תיקיות הספרים (`roots`), קטגוריה = נתיב התיקייה ביחס לתיקיית הספרים (`categoryOf`), הרשאת "כל הקבצים", סריקת קבצים, פתיחה חיצונית, מועדפים/היסטוריה/אחרונים |
-| `Indexer.kt` | `Progress` (מצב חי), ‏`Indexer` (סריקה → חילוץ טקסט במעבר אחד על כל ספר → OCR → משמעות), ‏`Ocr` (Tesseract עברי על עמודים בלי טקסט, רינדור ב-PdfRenderer), ‏`Net` (הורדות), ‏`IndexService` (שירות חזית עם התראה ו-WakeLock) |
-| `Search.kt` | בניית שאילתת FTS4 (ביטוי מדויק / כל המילים / NEAR / OR, עם אותיות שימוש וכוכבית), קיבוץ לפי ספר, התאמת שם ספר, קטעי טקסט (snippet) |
-| `Semantic.kt` | multilingual-e5-small (ONNX מ-HuggingFace, ‏Xenova), טוקנייזר SentencePiece Unigram (Viterbi) שנבנה מ-tokenizer.json, הטמעה (mean pooling + נרמול), קטעים של ~90 מילים, וקטורים int8 בקובץ `vectors.bin` (רשומה: pageId,scale,384 בתים), חיפוש brute-force עם top‑K |
-| `MainActivity.kt` | מסך החיפוש: מצב מילים/משמעות, אפשרויות, פירורי לחם וצ'יפים של קטגוריות (drill‑down), מיון, רשימת ספרים מתרחבת לעמודים עם קטעים מודגשים, מסך בית (היסטוריה, מועדפים, אחרונים, הסבר) |
-| `ReaderActivity.kt` | קורא PDF: ‏PdfRenderer לתמונה, ‏PDFBox למיקומי מילים → מלבני הדגשה, ‏`PageView` (זום, גרירה, הקשה בצדדים/החלקה לדפדוף), תוצאה הבאה/קודמת, חיפוש בספר, מועדפים, העתקת טקסט |
-| `BrowseActivity.kt` | עיון בתיקיות וספרים + `FolderPicker` (זיכרון פנימי וכרטיס זיכרון) |
-| `SettingsActivity.kt` | כל ההגדרות: תיקיות, סריקה, OCR, משמעות, פתיחה, גודל כתב, עדכונים, אודות |
-| `Updater.kt` | עדכון עצמי מ-`releases/latest` של המאגר |
-| `Organizer.kt` | סידור המאגר על המכשיר: כפולים לפי תוכן (hash לקובץ זהה + טביעת אצבע של רצפי 5 מילים / bottom‑k MinHash לתוכן זהה), סיווג ספר לתיקייה (TF‑IDF של כל תיקייה מול הספר, יורד בעץ התיקיות), תוכנית סידור לתיקייה עם תצוגה מקדימה (`Plan`: לפי נושא – k‑means על התוכן, לפי סדרה, לפי אות, לתיקיות המאגר), שמות חכמים (דף שער – הגופן הגדול / מטא‑דאטה; שם תיקייה לפי הספרים), העברה/שינוי שם עם עדכון האינדקס ויומן ביטול (`moveLog`) |
-| `Voice.kt` | חיפוש קולי: `VoiceModels` (הורדת Whisper small/base לאחסון עם הכי הרבה מקום, טעינה ושחרור אחרי 3 דקות), `Recorder` (מיקרופון + זיהוי סוף דיבור), `VoiceSearch` (שירות הדיבור של המכשיר אם יש, אחרת Whisper; משהה את הסריקה בזמן הזיהוי) |
-| `VoiceService.kt` | זיהוי הדיבור רץ בתהליך נפרד (`:voice`): קריסה או חוסר זיכרון סוגרים רק אותו; `VoiceRemote` שולח את ההקלטה, מזהה מוות של התהליך ומציע רמה קלה / זיהוי באינטרנט / הקלדה |
-| `Excerpt.kt` | לאפליקציות קריאה חיצוניות (ReadEra, NeoReader): PDF קטן של העמוד שנמצא ו-4 שאחריו, עם המילים/המשפט מסומנים בתוך ה-PDF |
-| `CloudActivity.kt` / `DriveSync.kt` | ספרים מהענן: בחירה ידנית, או חיבור חשבון Google (קריאה בלבד) – הגדרה חד-פעמית ב-`docs/GOOGLE_DRIVE_SETUP.md` |
-| `Nav.kt` / `VoiceActivity.kt` | תפריט צדדי ומסכים נפרדים; מסך קולי (שמעתי › הבנתי › לאן זה מוביל) |
-| `Catalog.kt` | השמות של הספרייה עצמה: כל שמות התיקיות והקבצים מהסריקה (+ דף השער), עם ראשי תיבות וכתיב חלופי – כל בקשה מותאמת אליהם, ונבנה מחדש אחרי כל סריקה |
-| `core/Abbr.kt` | מילון ראשי תיבות (גם מסך `AbbrActivity`) |
-| `Jump.kt` | קפיצה ישירה להפניה: מציאת כל הספרים המתאימים (כל המהדורות), העמוד לפי סימני הדף/הכותרות, ותיקון המשתמש ("✓ זה המקום") שנשמר ב-`dafCal` |
-| `OrganizeActivity.kt` | המסך של סידור המאגר: לשוניות כפולים / סידור לתיקיות (כולל תצוגה מקדימה ועריכה) / שמות חכמים, וכפתור "ביטול" |
+| `Ui.kt` | `App` (+ שמירת קריסות, שחרור מודלים בלחץ זיכרון), `Prefs`, `Col` (ערכות נושא: auto/blue/green/purple/warm/eink; E-ink מזוהה לפי ONYX/BOOX), עזרי UI, `BaseActivity`, `Sheet`, `hebrewDate()` |
+| `MainActivity.kt` | מסך הבית/חיפוש: מסך "לומד את הספרייה" בסריקה הראשונה, ברכה + תאריך עברי, מיקרופון גדול, אריחי כל המסכים, "על מה נחפש היום?" (`Topics`), "להמשיך מאיפה שעצרת", תוצאות עם קטגוריות; מצבי מסך `screen=meaning|words|home`; אבחון סגירה אחרונה (ApplicationExitInfo) |
+| `Nav.kt` | התפריט הצדדי (☰ / לחיצה על השם): מעבר מהיר, קולי, שאלה ותשובה, מילים | עיון, סידור, Drive, הגדרות | עדכונים, עזרה |
+| `VoiceActivity.kt` | מסך קולי **ו**מסך "⚡ מעבר מהיר" (`mode=type`): שמעתי › הבנתי › אפשרויות ממוספרות ①②③; חיפוש חי בזמן הקלדה (בקשה ישנה נזרקת); התקדמות שלב-שלב; "אולי התכוונת ל…"; "אחרונים" |
+| `Jump.kt` | בקשה → ספרים (`Catalog`) → המקום בכל ספר (`locate`: סימני דף, עמוד מודפס, פרשה, פרק/סימן, תיקון משתמש `dafCal`) |
+| `Catalog.kt` | עוטף את `core/Names` על ספרי ה-DB; נבנה ברקע בפתיחה ואחרי כל שינוי בספרייה (בלי לקרוא עמודים!) |
+| `Voice.kt` | `VoiceModels` (base "מהיר" / small "מדויק", נשמרים באחסון עם הכי הרבה מקום), `Recorder`, `VoiceSearch` (מנוע: Whisper כברירת מחדל, או שירות המכשיר; טיפול בכישלון) |
+| `VoiceService.kt` | Whisper רץ בתהליך נפרד `:voice`, כשירות חזית וקשור למסך הגלוי (לא נהרג ראשון); `lowMemory` ב-<3GB; `VoiceRemote` מזהה מוות של התהליך |
+| `Semantic.kt` | e5-small, אינדקס `vectors.bin`, חיפוש היברידי (אינדקס + השוואה במקום של עמודים עם מילות השאלה), משפט-תשובה; `Deep` = bge-m3 אופציונלי לבחירת התשובה |
+| `Search.kt` | FTS4: ביטוי/כל המילים/קרובות/אחת, אותיות שימוש, snippets |
+| `ReaderActivity.kt` | קורא: הדגשה ממוסגרת ופועמת עד נגיעה, ✨ להדגיש שוב, סימון משפט שלם (תשובה), OCR לעמודים סרוקים (`Ocr.wordBoxes`), תצוגת טקסט מסודרת, פס "✓ זה המקום" לגמרא |
+| `Excerpt.kt` | ל-ReadEra וקוראים חיצוניים: PDF קטן מהעמוד שנמצא + 4, עם סימון צהוב בתוך ה-PDF (אין ל-ReadEra API לפתיחה בעמוד) |
+| `Library.kt` | תיקיות, הרשאות, `pdfApps()` (כל האפליקציות שפותחות PDF; QUERY_ALL_PACKAGES), `chooseDefault()` בפתיחה הראשונה, `openExternal()` |
+| `Indexer.kt` | סריקה: קבצים → טקסט (ספרים קטנים קודם) → משמעות → OCR → משמעות; `Progress` (עם זמן שנותר), `Ocr`, `Net`, `IndexService` |
+| `Db.kt` | SQLite: `files`, `pages` (kind 0 טקסט, 1 OCR, 2 ממתין ל-OCR, 3 OCR ריק), `fts` (FTS4) |
+| `Text.kt` | `Heb`: תיקון עברית הפוכה/קידודים ישנים, ניקוי ניקוד, אותיות שימוש |
+| `CloudActivity.kt`, `DriveSync.kt` | ספרים מהענן: בחירה ידנית (SAF), או חיבור חשבון Google (drive.readonly) – סעיף 7 |
+| `Topics.kt` | רעיונות יומיים לחיפוש (רשימה + נושאי החודש העברי), מוצגים רק אם מופיעים בספרים, עם מספר מקומות |
+| `SettingsActivity.kt` | כל ההגדרות (ספרייה, סריקה, OCR, קולי, משמעות, מודל עמוק, פתיחת ספרים, ערכת נושא, עדכונים, אודות) |
+| `Updater.kt` | עדכון עצמי מ-`releases/latest` של `Search-Plus-`; בודק מיד אחרי עדכון ואחר כך כל 6 שעות |
+| `Organizer.kt`, `OrganizeActivity.kt`, `BrowseActivity.kt` | סידור המאגר ועיון בתיקיות (מהגרסה המקורית) |
+| `AbbrActivity.kt` | מסך מילון ראשי תיבות – **לא מקושר מהתפריט** (בעל הפרויקט ביקש להסיר); אפשר למחוק |
 
-## מפתחות Prefs
-`roots`, `semanticRoots`, `match` (PHRASE/ALL/NEAR/ANY), `prefixes`, `sort`, `lastSemantic`, `semantic`, `ocrAuto`, `autoScan`, `sortByPosition`, `openWith` (internal/external), `fontSize`, `autoUpdate`, `lastUpdateCheck`, `favs` (`path|page`), `history`, `recent` (`path|page`), `moveLog` (`M|now|wasDir` או `R|now|wasPath`), `voiceEngine` (auto/system/whisper), `whisperModel` (small/base), `whisperDir`, `systemFailed`, `readerPkg`/`readerCls` (אפליקציית ברירת המחדל לפתיחה), `copyTerms`, `dafCal` (`path|page|amudIndex`), `semError`.
+---
 
-## חיפוש לפי משמעות – מה תוקן
-האינדקס נבנה עכשיו לפני ה-OCR (קודם הוא חיכה עד שכל העמודים הסרוקים יעברו OCR – במאגר גדול זה לא קרה אף פעם), שגיאות נשמרות ומוצגות בהגדרות, ובחיפוש משווים במקום גם את העמודים שמכילים את מילות השאלה – כך יש תוצאות עוד לפני שהאינדקס הושלם.
+## 5. החלטות חשובות – ולמה
 
-## רעיונות להמשך
-- גיבוי האינדקס לכרטיס הזיכרון ושחזור אחרי התקנה מחדש.
-- הדגשה גם בעמודי OCR (מיקומי מילים מ-Tesseract ResultIterator).
-- תמיכה ב-EPUB/TXT/DOCX.
-- חיפוש היברידי (שילוב ציון מילים וציון משמעות).
-- ייצוא/גיבוי של האינדקס לכרטיס הזיכרון.
+1. **שמות מהמכשיר, לא רשימה קבועה** – הבקשה מותאמת לשמות התיקיות והקבצים שנמצאו בסריקה (`Names`). שינוי שם תיקייה + סריקה = מוכר מיד. הרשימות הקבועות (`Works`, `Abbr`) רק עוזרות.
+2. **המעבר המהיר נתקע כשבנה קטלוג מדפי שער** (24,000 קריאות DB) ותור של בקשות מכל הקשה. עכשיו: בלי קריאת עמודים, בנייה ברקע, בקשה ישנה נזרקת, `locate` רק ל-6 ספרים (10 בסימן/פרק).
+3. **Whisper בתהליך נפרד, שירות חזית, קשור למסך** – ב-2GB אנדרואיד הרג את התהליך ("נגמר הזיכרון") וזה סגר את כל התוכנה. עכשיו רק הזיהוי נופל, ובמכשיר <3GB הוא טוען encoder ואז decoder (לא ביחד).
+4. **Whisper small, לא turbo** – בבדיקות turbo (large-v3-turbo) זיהה פחות טוב, נתקע בחזרות והיה איטי פי 4. "רמז" (prompt) ארוך יותר פגע בזיהוי – לא לשנות את `Whisper.PROMPT` בלי להריץ את בדיקות ה-CI.
+5. **אינדקס משמעות לפני OCR** – OCR של מאגר גדול לוקח ימים; קודם המשמעות חיכתה לו ולא נבנתה אף פעם.
+6. **סריקה מלאה פעם אחת** (מסך חוסם עם התקדמות), אחר כך רק בדיקה יומית לספרים חדשים.
+7. **ReadEra** – אין דרך מתועדת לפתוח בעמוד. לכן `Excerpt` שולח PDF קטן מסומן. אפשר לכבות בהגדרות (ואז נפתח הספר המלא).
+8. **הדגשה** – שחור עבה ב-E-ink (צהוב שקוף לא נראה במסך שחור-לבן); חזקה עד נגיעה; ✨ מחזיר אותה.
+
+---
+
+## 6. מה נבדק – ומה לא
+
+**נבדק (ב-CI או מקומית):**
+- המנתח (`HebRefTest`), מנוע השמות על 12,000 ספרים מדומים (`NamesTest`), ספקטרוגרמה זהה ל-OpenAI, טוקנייזרים זהים ל-HF,
+  e5 ו-bge-m3 זהים לגרסה הרשמית (cos>0.99), Whisper על הקלטות TTS עבריות (small: 3/5 נכון; "כ״ז" לפעמים נשמע "כ׳"; base חלש מאוד).
+- קומפילציה של האפליקציה ובניית APK.
+
+**לא נבדק על המכשיר האמיתי (חשוב!):**
+- האם הזיהוי הקולי עובד על ה-BOOX אחרי תיקוני הזיכרון (1.0.230) וכמה זמן לוקח.
+- האם המעבר המהיר מוצא את הספרים בשמות האמיתיים שלו (נבדק רק על ספרייה מדומה).
+- פתיחה מסומנת ב-ReadEra, הדגשה בעמודים סרוקים (OCR), חיבור Drive, מודל ההבנה העמוק ב-2GB.
+
+---
+
+## 7. דברים שבעל הפרויקט צריך לעשות (עדיין פתוח)
+
+- **GitHub Pages:** Settings › Pages › Deploy from a branch › `gh-pages` › `/(root)` › Save. (ניסה פעם אחת וקיבל 404 – כנראה לא נשמר.)
+- **Google Drive (חיבור חשבון):** רישום חד-פעמי ב-Google Cloud – ההוראות ב-`docs/GOOGLE_DRIVE_SETUP.md` (Package `com.chdv.searchplus` + SHA-1 למעלה, Drive API, OAuth consent עם Test users). בלי זה הכפתור יחזיר שגיאה; הבחירה הידנית עובדת.
+- **פרסום רחב:** חנות Play (25$) תמנע את חסימת ה-APK; לא נעשה.
+
+---
+
+## 8. רעיונות ומשימות פתוחות
+
+- לבדוק עם בעל הפרויקט שמות תיקיות אמיתיים (צילומי מסך) ולכוונן את `Names` לפיהם; להוסיף לבדיקה `NamesTest`.
+- סעיף בתוך סימן (seif) – כרגע נפתח תחילת הסימן.
+- שיפור זיהוי מספרים בדיבור ("כ״ז") – אולי פענוח עם כמה מועמדים ובחירה לפי מה שקיים בספרייה.
+- הדגשה בעמודי OCR מהירה יותר (לשמור מיקומי מילים בזמן ה-OCR במקום לחשב מחדש).
+- גיבוי האינדקס לכרטיס הזיכרון; תמיכה ב-EPUB/DOCX.
+- קובץ `SearchPlus-full-source.md` בשורש הוא מהגרסה המקורית ו**אינו מעודכן** – אפשר למחוק או לייצר מחדש.
+
+---
+
+## 9. מסמכים, מדיה ושיווק
+
+- `docs/guide/guide.html` → `SearchPlus-Guide.pdf` (6 עמודים). `docs/video/` → סרטון ~3 דק׳ עם קריינות עברית.
+- `docs/ad/` – מודעה (`SearchPlus-Ad.png`, 1080×1350 עם QR להורדה) והודעת וואטסאפ (`message.txt`). ליצירה מחדש: Playwright על `ad.html`.
+- `docs/site/index.html` – דף הנחיתה. בגרסת ה-Artifact: בלי תגיות head, גופן Heebo מ-Google Fonts, ערכי צבע ל-dark mode, הסרטון כקובץ מצורף, מייל כטקסט עם כפתור העתקה.
+- המסכים במדריך, בסרטון ובדף הם **המחשה** (HTML), לא צילומי מסך אמיתיים; המספרים בהם לדוגמה.
+
+---
+
+## 10. מפתחות Prefs
+`roots`, `semanticRoots`, `match`, `prefixes`, `sort`, `lastSemantic`, `semantic`, `semError`, `semBusy`, `deep`, `ocrAuto`, `autoScan`, `lastAutoScan`, `firstScanDone`,
+`sortByPosition`, `openWith` (internal/external), `readerPkg`/`readerCls`, `readerChosen`, `excerpt`, `copyTerms`, `fontSize`, `theme`,
+`autoUpdate`, `lastUpdateCheck`, `checkedForVersion`, `favs`, `history`, `recent`, `moveLog`, `dafCal` (`path|page|amudIndex`),
+`voiceEngine` (whisper/auto/system), `whisperModel` (base/small), `whisperDir`, `voiceSearchAuto`, `voiceLowMem`, `voiceBusy`, `voiceLast`, `systemFailed`, `slowHinted`,
+`lastExitSeen`, `cloudDir`, `driveLastSync`, `topics`, `topicsDay`.
+
+---
+
+## 11. איך לעבוד מול בעל הפרויקט
+
+- לכתוב לו בעברית, קצר וברור, עם כותרות. בסוף – קישור להורדה. להגיד בגלוי מה **לא** נבדק על המכשיר.
+- כל שינוי: לבדוק קומפילציה, לדחוף ל-`main`, לחכות ל-Release, ולשלוח לו את הקישור. הוא מעדכן מהתוכנה (הגדרות › בדיקת עדכונים) או מהקישור.
+- כשמשהו "לא עובד" – לבקש צילום מסך; המסכים מציגים עכשיו התקדמות ושגיאות בדיוק כדי שאפשר יהיה לאבחן מהצילום.
