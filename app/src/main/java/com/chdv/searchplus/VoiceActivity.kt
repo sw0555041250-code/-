@@ -51,9 +51,16 @@ class VoiceActivity : BaseActivity() {
         loading.removeCallbacks(tick); loading.post(tick)
     }
 
+    /** Stops the running search (a newer token makes it stale, the signal stops its database query). */
+    private fun stopSearch(msg: String) {
+        token++
+        try { cancel?.cancel() } catch (e: Throwable) {}
+        stopLoading()
+        understood.text = msg
+    }
+
     private fun stopLoading() { bar.progress = 100; loading.removeCallbacks(tick); loading.visibility = View.GONE }
     private val typing by lazy { intent.getStringExtra("mode") == "type" }
-    private val live = Runnable { val t = heard.text.toString().trim(); if (t.length >= 3) handle(t, false, quiet = true) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -94,15 +101,7 @@ class VoiceActivity : BaseActivity() {
         row.addView(heard, lp(0, WRAP, 1f))
         if (typing) row.addView(label("🎤", 22f, Col.ACC, true).apply { setPadding(dp(8), dp(4), dp(8), dp(4)); setOnClickListener { listen() } })
         row.addView(pill(if (typing) "לפתוח" else "חיפוש") { handle(heard.text.toString(), typing) }, lp(WRAP, WRAP))
-        if (typing) heard.addTextChangedListener(object : android.text.TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-            override fun afterTextChanged(e: android.text.Editable?) {
-                // live: what was understood and where it leads, while typing
-                heard.removeCallbacks(live)
-                heard.postDelayed(live, 550)
-            }
-        })
+        // no searching while typing (it got in the way): the search starts on "לפתוח" / Enter
         box.addView(row, lp(MATCH, WRAP).m(0, dp(4), 0, dp(10)))
 
         understood = label("", 16f, Col.ACC, true)
@@ -113,6 +112,11 @@ class VoiceActivity : BaseActivity() {
         loading.addView(bar, lp(0, dp(14), 1f))
         secs = label("", 13.5f, Col.SUB, true).apply { setPadding(dp(10), 0, dp(4), 0) }
         loading.addView(secs)
+        // a way out at any moment: stops the search at once
+        loading.addView(label("⏹ עצור", 14f, Col.ACC, true).apply {
+            setPadding(dp(12), dp(4), dp(8), dp(4))
+            setOnClickListener { stopSearch("החיפוש נעצר. אפשר לתקן ולחפש שוב.") }
+        })
         box.addView(loading, lp(MATCH, WRAP).m(dp(4), 0, dp(4), dp(8)))
         results = vbox()
         box.addView(results, lp(MATCH, WRAP))
@@ -173,20 +177,21 @@ class VoiceActivity : BaseActivity() {
         results.removeAllViews()
         understood.text = "🔎 מתחיל לחפש…"
         startLoading()
-        exec.execute {
+        loading.postDelayed({ if (my == token) stopSearch("החיפוש לקח יותר מדי זמן ונעצר. אפשר לנסות ניסוח קצר יותר – למשל \"לקוטי שיחות חלק ה נח\".") }, 40_000)
+        Thread {
             val ref = try { RefParser.parse(text) } catch (e: Throwable) { null }
             val noDaf = ref != null && ref.kind == Ref.Kind.GEMARA && ref.daf == null
             // a newer request (typing on) makes this one stale: stop at once, don't block the next
-            if (my != token) return@execute
+            if (my != token) return@Thread
             val stale = { my != token }
             val prog: (String, Int) -> Unit = { t, pct -> ui { if (my == token) { understood.text = t; target = maxOf(target, pct) } } }
             if (ref != null) prog("💡 הבנתי: ${ref.label()}", 10)
             val targets = if (ref != null && !noDaf) try { Jump.resolve(ref, text, stale, prog, sig, deep = !typingNow) } catch (e: Throwable) { emptyList() } else emptyList()
             if (targets.isEmpty() && !stale() && !typingNow) prog("🔤 מחפש את המילים בתוך הספרים…", 90)
-            if (stale()) return@execute
+            if (stale()) return@Thread
             // no place in a book – maybe the name of a book or a folder (as they are on the device)
             val named = if (ref == null) try { Catalog.find(text, null, 8).filter { it.score >= 5f } } catch (e: Throwable) { emptyList() } else emptyList()
-            if (stale()) return@execute
+            if (stale()) return@Thread
             // the words that are not the book's name: look for them inside the book
             val rest = if (named.isEmpty()) emptyList() else {
                 val nameWords = named.take(3).flatMap { com.chdv.searchplus.core.Names.words(it.book.title) + com.chdv.searchplus.core.Names.words(it.book.dir.substringAfterLast('/')) }.toSet()
@@ -194,7 +199,7 @@ class VoiceActivity : BaseActivity() {
             }
             if (rest.isNotEmpty()) prog("📖 מחפש \"${rest.joinToString(" ")}\" בתוך ${named.take(6).size} ספרים…", 70)
             inside = if (rest.isNotEmpty()) try { Jump.inside(named.map { it.book }, rest, sig) } catch (e: Throwable) { emptyList() } else emptyList()
-            if (stale()) return@execute
+            if (stale()) return@Thread
             // not a place in a book (or no such book): the books that contain the words
             // place words ("מסכת", "דף", "עמוד") are not what is looked for inside the pages
             val plain = text.split(Regex("\\s+")).filter { w -> com.chdv.searchplus.core.RefParser.normalize(w) !in com.chdv.searchplus.core.Names.PLACE }.joinToString(" ")
@@ -202,14 +207,14 @@ class VoiceActivity : BaseActivity() {
                 Search.run(plain, Match.ALL, true, null, sig, 20000).takeIf { it.books.isNotEmpty() || stale() }
                     ?: if (plain.split(' ').size in 2..4) Search.run(plain, Match.ANY, true, null, sig, 5000) else null
             } catch (e: Throwable) { null } else null
-            if (stale()) return@execute
+            if (stale()) return@Thread
             // "did you mean": also here, never on the screen's thread
             val sug = if (ref != null && targets.isEmpty()) try { Jump.suggest(text) } catch (e: Throwable) { emptyList() } else emptyList()
             ui {
                 if (my != token || isFinishing) return@ui
                 show(text, ref, noDaf, targets, words, auto, named, typingNow, sug)
             }
-        }
+        }.apply { isDaemon = true; priority = Thread.NORM_PRIORITY - 1 }.start()
     }
 
     private fun show(text: String, ref: Ref?, noDaf: Boolean, targets: List<Jump.Target>, words: Results?, auto: Boolean, named: List<Catalog.Match> = emptyList(), live: Boolean = false, sug: List<Book> = emptyList()) {

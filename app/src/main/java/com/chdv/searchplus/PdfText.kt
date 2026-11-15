@@ -39,13 +39,14 @@ object PdfText {
      * Only the top and bottom of each page (headers, page numbers) – enough to find a parsha, a daf
      * or a printed page number in a book that was not scanned yet. Page numbers start at 1.
      */
-    fun heads(c: Context, f: File): Map<Int, String> {
+    fun heads(c: Context, f: File, cancel: () -> Boolean = { false }): Map<Int, String> {
         if (broken) return emptyMap()
         val out = HashMap<Int, String>()
         try {
             ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
                 core(c).newDocument(pfd).use { doc ->
                     for (i in 0 until doc.getPageCount()) {
+                        if (cancel()) break
                         val t = pageText(doc, i, Int.MAX_VALUE) ?: continue
                         val p = Indexer.prepare(t) ?: continue
                         out[i + 1] = if (p.length <= 600) p else p.take(400) + "\n" + p.takeLast(200)

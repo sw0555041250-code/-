@@ -57,10 +57,12 @@ object Jump {
         val cands = Catalog.find(request, ref, if (manyVolumes) 10 else 6)
         if (cands.isNotEmpty()) progress("📚 נמצאו ${cands.size} ספרים מתאימים – מחפש בהם את המקום…", 35)
         val out = ArrayList<Target>()
+        // books not scanned yet are read now – at most ~20 seconds for all of them
+        val until = System.currentTimeMillis() + 20_000
         for ((k, m) in cands.withIndex()) {
             if (stale()) return out
             progress("📖 ${k + 1}/${cands.size} · מחפש את ${ref.label()} ב„${m.book.title}”…", 35 + 60 * k / maxOf(1, cands.size))
-            out.add(try { locate(m.book, ref, deep) } catch (e: Throwable) { Target(m.book, 1, false, ref, null) })
+            out.add(try { locate(m.book, ref, deep && System.currentTimeMillis() < until) { stale() || System.currentTimeMillis() > until } } catch (e: Throwable) { Target(m.book, 1, false, ref, null) })
         }
         // where the place was really found in some books – only those (no "page 1, estimated")
         if (out.any { it.exact }) return out.filter { it.exact }
@@ -105,10 +107,14 @@ object Jump {
         }
         // books the scan has not read yet: their headers, now (a few, the best named ones)
         val unread = cands.filter { it.status != St.DONE || it.textPages == 0 }.take(if (!deep) 0 else if (ref.volume != null) 4 else 3)
+        // reading books now takes time: at most ~15 seconds for all of them
+        val until = System.currentTimeMillis() + 15_000
         for ((k, b) in unread.withIndex()) {
             if (stale()) return emptyList()
+            if (System.currentTimeMillis() > until) break
             progress("📖 קורא את „${b.title}” (עוד לא נסרק)…", 60 + 30 * k / maxOf(1, unread.size))
-            val heads = try { PdfText.heads(App.ctx, java.io.File(b.path)) } catch (e: Throwable) { emptyMap() }
+            val heads = try { PdfText.heads(App.ctx, java.io.File(b.path)) { stale() || System.currentTimeMillis() > until } } catch (e: Throwable) { emptyMap() }
+            if (stale()) return emptyList()
             val (pg, score) = PageFinder.parshaPage(heads, parsha, ref.sicha) ?: continue
             out.add(Target(b, pg, true, ref, null) to score)
         }
@@ -137,9 +143,9 @@ object Jump {
 
     private fun needsPages(ref: Ref) = ref.parsha != null || ref.page != null || ref.siman != null || ref.chapter != null || ref.daf != null
 
-    private fun locate(b: Book, ref: Ref, deep: Boolean = true): Target {
+    private fun locate(b: Book, ref: Ref, deep: Boolean = true, stop: () -> Boolean = { false }): Target {
         // a book the scan has not reached yet: read its headers now (fast native reader)
-        val pages = Db.get().pageTexts(b.id).ifEmpty { if (deep && needsPages(ref)) PdfText.heads(App.ctx, java.io.File(b.path)) else emptyMap() }
+        val pages = Db.get().pageTexts(b.id).ifEmpty { if (deep && needsPages(ref)) PdfText.heads(App.ctx, java.io.File(b.path), stop) else emptyMap() }
         val count = b.pages.coerceAtLeast(1)
         when (ref.kind) {
             Ref.Kind.GEMARA -> {
