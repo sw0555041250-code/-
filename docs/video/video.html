@@ -112,14 +112,14 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const scr = () => $('#scr');
 
 function head() { return `<div class="head"><div class="logo">פ+</div><div><div class="ttl">חיפוש פלוס</div><div class="st">חיפוש מעמיק בתוך הספרים שלך</div></div><div style="margin-right:auto;color:var(--acc);font-weight:700">📚 ⚙</div></div>`; }
-function search(q, hint) { return `<div class="search"><span class="q ${hint ? 'hint' : ''}" id="q">${q}</span><span>🎤</span><span class="go">חיפוש</span></div>`; }
+function search(q, hint) { return `<div class="search"><span class="q ${hint ? 'hint' : ''}" id="q">${q}</span><span class="go">חיפוש</span></div>`; }
 function modes(sem) { return `<div class="modes"><span class="${sem ? '' : 'on'}" id="m1">🔤 חיפוש מילים</span><span class="${sem ? 'on' : ''}" id="m2">💡 לפי משמעות</span></div>`; }
 function lines(n, seed = 1) { let h = ''; for (let i = 0; i < n; i++) h += `<div class="ln ${((i * 7 + seed) % 5 === 0) ? 's' : ''}" style="width:${70 + ((i * 37 + seed * 13) % 30)}%"></div>`; return h; }
 function home() {
-  return head() + search('מה לחפש? או לחצו 🎤 ודברו', true) + modes(false) +
+  return head() + search('מה לחפש? מילה, ביטוי או שאלה', true) + modes(false) +
   `<div class="body"><div class="hero"><b>ערב טוב! מה נלמד היום?</b><span style="opacity:.85;font-size:12px">אלפי ספרים · כל עמוד ניתן לחיפוש</span></div>
-   <div class="mic"><div class="c" id="micc">🎤</div><b>לחצו ודברו</b><span style="color:var(--sub);font-size:12px">אומרים מה מחפשים – והספר נפתח במקום</span>
-   <div style="margin-top:8px"><span class="chip">“ברכות דף כ״ז ע״א”</span><span class="chip">“לקוטי שיחות חלק ד עמוד 58”</span><span class="chip">“מה מברכים על פרי העץ”</span></div></div></div>`;
+   <div class="mic" id="micc"><b>⚡ מעבר מהיר</b><span style="color:var(--sub);font-size:12px">כותבים ספר ומקום – והספר נפתח בעמוד הנכון</span>
+   <div style="margin-top:8px"><span class="chip">“ברכות דף כ״ז ע״א”</span><span class="chip">“לקוטי שיחות חלק ד עמוד 58”</span><span class="chip">“לקוטי שיחות חלק ה נח”</span></div></div></div>`;
 }
 async function type(el, text, total) {
   el.classList.remove('hint'); el.textContent = ''; el.classList.add('caret');
@@ -139,7 +139,7 @@ function reader(ref, hdrR, hdrL, body) {
 }
 
 const S = {
-  async intro(d) { $('#phone').classList.add('hidden'); $('#logo').classList.add('in'); $('#logoSub').textContent = 'אומרים מה מחפשים – והספר נפתח במקום'; $('#cap').style.opacity = 0; await wait(d - 700); $('#logo').classList.remove('in'); $('#cap').style.opacity = 1; },
+  async intro(d) { $('#phone').classList.add('hidden'); $('#logo').classList.add('in'); $('#logoSub').textContent = 'כותבים מה מחפשים – והספר נפתח במקום'; $('#cap').style.opacity = 0; await wait(d - 700); $('#logo').classList.remove('in'); $('#cap').style.opacity = 1; },
   async library(d) {
     $('#phone').classList.remove('hidden');
     const f = [['📁 גמרא', '412 ספרים'], ['📁 חסידות חב״ד', '1,930 ספרים'], ['   › רבותינו נשיאינו', '1,214'], ['      › לקוטי שיחות', '39 כרכים'], ['📁 הלכה', '688 ספרים'], ['📁 מפרשים', '540 ספרים'], ['📁 תנ״ך', '210 ספרים'], ['📁 ספרים שונים', '…']];
@@ -150,16 +150,15 @@ const S = {
     for (const x of fos) { x.classList.add('in'); await wait(d * .7 / fos.length); }
     await wait(d * .3);
   },
-  async voice(d) {
-    scr().innerHTML = home() + `<div class="sheet" id="sh"><h3>🎤 מקשיב… דברו עכשיו</h3><div style="color:var(--sub);font-size:12px">עובד בתוך המכשיר – בלי אינטרנט</div><div class="level"><i id="lv"></i></div><div class="heard" id="hd"></div></div>`;
-    await wait(500); tapAt($('#micc')); $('#micc').classList.add('press'); await wait(350); $('#micc').classList.remove('press');
-    $('#sh').classList.add('in');
-    const words = 'ליקוטי שיחות חלק ד׳, שיחה לפרשת נח'.split(' ');
-    const iv = setInterval(() => $('#lv').style.width = (15 + Math.random() * 80) + '%', 120);
-    for (const w of words) { await wait((d * .55) / words.length); $('#hd').textContent += (($('#hd').textContent ? ' ' : '') + w); }
-    clearInterval(iv); $('#lv').style.width = '0%';
-    $('.sheet h3').textContent = '⏳ מזהה…';
-    await wait(Math.max(300, d * .45 - 1200));
+  async jump(d) {
+    scr().innerHTML = home();
+    await wait(400); tapAt($('#micc')); await wait(450);
+    scr().innerHTML = head() + `<div class="body"><div class="hero" style="background:linear-gradient(135deg,#E0712C,#FFA65C)"><b>⚡ לאן לקפוץ?</b><span style="font-size:12px;opacity:.9">כותבים ספר ומקום, ולוחצים „לפתוח”</span></div></div>` +
+      `<div class="search"><span class="q" id="q"></span><span class="go" id="go">לפתוח</span></div><div class="body"><div id="und" style="color:var(--acc);font-weight:800;font-size:13.5px;min-height:20px"></div></div>`;
+    await type($('#q'), 'ליקוטי שיחות חלק ד׳ נח', d * .45);
+    await wait(250); tapAt($('#go'));
+    $('#und').textContent = '📚 מחפש את פרשת נח בתוך הכרך…';
+    await wait(Math.max(300, d * .55 - 1100));
   },
   async open(d) {
     scr().innerHTML = reader('לקוטי שיחות חלק ד – נח', 'לקוטי שיחות · נח', '58',
@@ -249,7 +248,7 @@ const S = {
   async reader(d) {
     scr().innerHTML = `<div class="head"><span style="color:var(--acc);font-size:20px">→</span><div class="ttl">הגדרות</div></div><div class="body">
       <div class="set"><b>באיזו אפליקציה לפתוח ספרים</b><span>הקורא המובנה – בעמוד הנכון עם סימון המילים</span></div>
-      <div class="set"><b>🎤 מנוע זיהוי הדיבור</b><span>בתוך המכשיר – בלי אינטרנט</span></div>
+      <div class="set"><b>⚡ מעבר מהיר</b><span>כותבים ספר ומקום – והוא נפתח</span></div>
       <div class="set"><b>💡 חיפוש לפי משמעות</b><span>מוכן ✓</span></div></div>
       <div class="sheet" id="sh"><h3>ברירת מחדל לפתיחת ספרים</h3><div class="opt on" id="o1">● קורא מובנה – עמוד מדויק + סימון (מומלץ)</div><div class="opt" id="o2">○ ReadEra</div><div class="opt">○ NeoReader</div><div class="opt">○ Moon+ Reader</div></div>`;
     await wait(d * .2); tapAt(document.querySelector('.set')); $('#sh').classList.add('in');
