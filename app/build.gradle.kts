@@ -74,6 +74,8 @@ dependencies {
     implementation("com.google.android.gms:play-services-auth:21.2.0")
     // PDF text extraction (including the position of every letter, for highlighting)
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+    // Fast native text reading (PDFium) for the scan and for finding places in unscanned books
+    implementation("io.legere:pdfiumandroid:1.0.28")
     // On-device AI model for search by meaning
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.2")
     // OCR for scanned pages that have no text layer

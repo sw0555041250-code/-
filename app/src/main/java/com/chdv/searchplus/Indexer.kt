@@ -82,6 +82,13 @@ object Indexer {
 
     fun loadDoc(f: File): PDDocument = PDDocument.load(f, "", MemoryUsageSetting.setupTempFileOnly())
 
+    /** Text of every page: PDFium first (fast), PDFBox when PDFium can't read the file. */
+    fun extractFast(c: Context, f: File): List<String?> {
+        val raw = PdfText.pages(c, f) { Progress.cancel }
+        if (raw != null) return raw.map { r -> r?.let { prepare(it) } }
+        return extract(f)
+    }
+
     /** Raw text of every page (null where nothing could be read). */
     fun extract(f: File): List<String?> {
         loadDoc(f).use { doc ->
@@ -144,7 +151,7 @@ object Indexer {
             Progress.waitWhilePaused()
             Progress.current = File(path).name
             try {
-                val texts = extract(File(path))
+                val texts = extractFast(c, File(path))
                 db.saveBook(id, texts)
             } catch (e: OutOfMemoryError) {
                 System.gc()

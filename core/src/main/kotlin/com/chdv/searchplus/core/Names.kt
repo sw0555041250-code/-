@@ -12,9 +12,12 @@ class Names(books: List<Item>) {
     private class Entry(val item: Item, val title: Set<String>, val folders: Set<String>, val keys: Set<String>,
                         val titleText: String, val allText: String, val volume: Int?)
 
+    // many books share the same folders: each folder name is read once
+    private val folderWords = HashMap<String, Set<String>>()
+
     private val entries: List<Entry> = books.map { b ->
         val tw = words(b.title)
-        val fw = b.folders.flatMap { words(it) }.toSet()
+        val fw = b.folders.flatMap { f -> folderWords.getOrPut(f) { words(f) } }.toSet()
         val volume = PageFinder.volumeOf(b.title) ?: b.folders.lastOrNull()?.let { PageFinder.volumeOf(it) }
         Entry(b, tw, fw, (tw + fw).map(::key).filter { it.length >= 2 }.toSet(),
             " " + tw.joinToString(" ") + " ", " " + (tw + fw).joinToString(" ") + " ", volume)

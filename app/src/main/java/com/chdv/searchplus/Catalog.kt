@@ -14,19 +14,35 @@ object Catalog {
     @Volatile private var names: Names? = null
     @Volatile private var books: Map<Long, Book> = emptyMap()
 
-    fun invalidate() { names = null }
+    @Volatile private var dirty = false
+    @Volatile private var builtAt = 0L
+    @Volatile private var rebuilding = false
+
+    /**
+     * The library changed (the scan saves books all the time). The current catalog keeps serving
+     * requests; a new one is built in the background, at most once a minute – never in the way of a search.
+     */
+    fun invalidate() {
+        dirty = true
+        if (names != null && !rebuilding && System.currentTimeMillis() - builtAt > 60_000) {
+            rebuilding = true
+            Thread { try { synchronized(this) { names = null; build() } } catch (e: Throwable) {} finally { rebuilding = false } }.start()
+        }
+    }
 
     @Synchronized
-    private fun get(): Names {
-        names?.let { return it }
+    private fun get(): Names = names ?: build()
+
+    private fun build(): Names {
         val all = Db.get().books()
         val roots = Library.roots()
         val items = all.values.map { b ->
             val root = roots.filter { b.dir == it || b.dir.startsWith("$it/") }.maxByOrNull { it.length } ?: ""
             Names.Item(b.id, b.title, b.dir.removePrefix(root).trim('/').split('/').filter { it.isNotBlank() })
         }
-        books = all
-        return Names(items).also { names = it }
+        val n = Names(items)
+        books = all; names = n; dirty = false; builtAt = System.currentTimeMillis()
+        return n
     }
 
     /** Build in the background, so the first request is instant. */

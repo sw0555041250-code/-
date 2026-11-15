@@ -678,7 +678,7 @@ class MainActivity : BaseActivity() {
         jumpBar.visibility = View.VISIBLE
         jumpBar.setOnClickListener(null)
         exec.execute {
-            val targets = try { Jump.resolve(ref, q, { token != searchToken }) { t -> ui { if (token == searchToken) jumpBar.text = "⤶ $t" } } } catch (e: Throwable) { emptyList() }
+            val targets = try { Jump.resolve(ref, q, { token != searchToken }) { t, _ -> ui { if (token == searchToken) jumpBar.text = "⤶ $t" } } } catch (e: Throwable) { emptyList() }
             ui {
                 if (token != searchToken) return@ui
                 if (targets.isEmpty()) {
@@ -702,7 +702,7 @@ class MainActivity : BaseActivity() {
     }
 
     private fun openTarget(t: Jump.Target) {
-        ReaderActivity.open(this, t.book.path, t.page, refLabel = t.ref.label(), amudIndex = t.amudIndex ?: -1, exact = t.exact)
+        ReaderActivity.open(this, t.book.path, t.page, t.marks, refLabel = t.ref.label(), amudIndex = t.amudIndex ?: -1, exact = t.exact)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {

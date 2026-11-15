@@ -12,6 +12,13 @@ import com.chdv.searchplus.core.RefParser
  */
 object Jump {
     class Target(val book: Book, val page: Int, val exact: Boolean, val ref: Ref, val amudIndex: Int?) {
+        /** Words to mark on the opened page: the parsha / "סימן …" / "פרק …" heading that was looked for. */
+        val marks: List<String> get() = when {
+            ref.parsha != null && ref.page == null -> RefParser.normalize(ref.parsha!!).split(' ')
+            ref.siman != null -> listOf("סימן", HebNum.toHeb(ref.siman!!))
+            ref.chapter != null -> listOf("פרק", HebNum.toHeb(ref.chapter!!))
+            else -> emptyList()
+        }
         val note: String get() = if (exact) "עמוד $page" else "עמוד $page (משוער – אפשר לתקן בקורא)"
     }
 
@@ -35,16 +42,17 @@ object Jump {
      * The books for a request (by the names they have on the device), each opened at the place.
      * [stale] lets a newer request stop an older one at once.
      */
-    fun resolve(ref: Ref, raw: String? = null, stale: () -> Boolean = { false }, progress: (String) -> Unit = {}): List<Target> {
+    /** [progress] gets a message and how far along it is (0–100). */
+    fun resolve(ref: Ref, raw: String? = null, stale: () -> Boolean = { false }, progress: (String, Int) -> Unit = { _, _ -> }): List<Target> {
         val request = raw ?: (listOf(ref.work) + ref.extra).joinToString(" ")
         val manyVolumes = ref.siman != null || ref.chapter != null
-        progress("🔎 מחפש בשמות ${Db.get().books().size} הספרים…")
+        progress("🔎 מחפש בשמות ${Db.get().books().size} הספרים…", 15)
         val cands = Catalog.find(request, ref, if (manyVolumes) 10 else 6)
-        if (cands.isNotEmpty()) progress("📚 נמצאו ${cands.size} ספרים מתאימים – מחפש בהם את המקום…")
+        if (cands.isNotEmpty()) progress("📚 נמצאו ${cands.size} ספרים מתאימים – מחפש בהם את המקום…", 35)
         val out = ArrayList<Target>()
         for ((k, m) in cands.withIndex()) {
             if (stale()) return out
-            progress("📖 ${k + 1}/${cands.size} · מחפש את ${ref.label()} ב„${m.book.title}”…")
+            progress("📖 ${k + 1}/${cands.size} · מחפש את ${ref.label()} ב„${m.book.title}”…", 35 + 60 * k / maxOf(1, cands.size))
             out.add(try { locate(m.book, ref) } catch (e: Throwable) { Target(m.book, 1, false, ref, null) })
         }
         // a siman / chapter: a work in several volumes – keep the volumes where it was really found
@@ -58,8 +66,11 @@ object Jump {
 
     private fun HebNum0(w: String) = com.chdv.searchplus.core.HebNum.gematria(w) == null || w.length > 3
 
+    private fun needsPages(ref: Ref) = ref.parsha != null || ref.page != null || ref.siman != null || ref.chapter != null || ref.daf != null
+
     private fun locate(b: Book, ref: Ref): Target {
-        val pages = Db.get().pageTexts(b.id)
+        // a book the scan has not reached yet: read its headers now (fast native reader)
+        val pages = Db.get().pageTexts(b.id).ifEmpty { if (needsPages(ref)) PdfText.heads(App.ctx, java.io.File(b.path)) else emptyMap() }
         val count = b.pages.coerceAtLeast(1)
         when (ref.kind) {
             Ref.Kind.GEMARA -> {

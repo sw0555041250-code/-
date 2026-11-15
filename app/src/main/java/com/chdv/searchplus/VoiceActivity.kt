@@ -27,6 +27,29 @@ class VoiceActivity : BaseActivity() {
     private lateinit var results: LinearLayout
     private lateinit var status: TextView
     private var token = 0
+    private lateinit var loading: LinearLayout
+    private lateinit var bar: android.widget.ProgressBar
+    private lateinit var secs: TextView
+    private var started = 0L
+    private var target = 0
+    private val tick = object : Runnable {
+        override fun run() {
+            if (loading.visibility != View.VISIBLE) return
+            // creep towards the current stage, so the bar always moves a little
+            if (bar.progress < target) bar.progress = minOf(target, bar.progress + 3)
+            else if (bar.progress < 97) bar.progress = bar.progress + 1
+            secs.text = "⏱ ${(System.currentTimeMillis() - started) / 1000} שנ׳"
+            loading.postDelayed(this, if (Col.isEink) 700 else 250)
+        }
+    }
+
+    private fun startLoading() {
+        started = System.currentTimeMillis(); target = 8; bar.progress = 0
+        loading.visibility = View.VISIBLE
+        loading.removeCallbacks(tick); loading.post(tick)
+    }
+
+    private fun stopLoading() { bar.progress = 100; loading.removeCallbacks(tick); loading.visibility = View.GONE }
     private val typing by lazy { intent.getStringExtra("mode") == "type" }
     private val live = Runnable { val t = heard.text.toString().trim(); if (t.length >= 3) handle(t, false, quiet = true) }
 
@@ -82,6 +105,13 @@ class VoiceActivity : BaseActivity() {
 
         understood = label("", 16f, Col.ACC, true)
         box.addView(understood, lp(MATCH, WRAP).m(dp(4), 0, dp(4), dp(6)))
+        // a loading bar that moves, with seconds – so it is clear the search is working and how far it got
+        loading = hbox().apply { visibility = View.GONE }
+        bar = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { max = 100; progress = 0 }
+        loading.addView(bar, lp(0, dp(14), 1f))
+        secs = label("", 13.5f, Col.SUB, true).apply { setPadding(dp(10), 0, dp(4), 0) }
+        loading.addView(secs)
+        box.addView(loading, lp(MATCH, WRAP).m(dp(4), 0, dp(4), dp(8)))
         results = vbox()
         box.addView(results, lp(MATCH, WRAP))
 
@@ -134,16 +164,17 @@ class VoiceActivity : BaseActivity() {
         val my = ++token
         results.removeAllViews()
         understood.text = "🔎 מתחיל לחפש…"
+        startLoading()
         exec.execute {
             val ref = try { RefParser.parse(text) } catch (e: Throwable) { null }
             val noDaf = ref != null && ref.kind == Ref.Kind.GEMARA && ref.daf == null
             // a newer request (typing on) makes this one stale: stop at once, don't block the next
             if (my != token) return@execute
             val stale = { my != token }
-            val prog: (String) -> Unit = { t -> ui { if (my == token) understood.text = t } }
-            if (ref != null) prog("💡 הבנתי: ${ref.label()}")
+            val prog: (String, Int) -> Unit = { t, pct -> ui { if (my == token) { understood.text = t; target = maxOf(target, pct) } } }
+            if (ref != null) prog("💡 הבנתי: ${ref.label()}", 10)
             val targets = if (ref != null && !noDaf) try { Jump.resolve(ref, text, stale, prog) } catch (e: Throwable) { emptyList() } else emptyList()
-            if (targets.isEmpty() && !stale()) prog("🔤 מחפש את המילים בתוך הספרים…")
+            if (targets.isEmpty() && !stale()) prog("🔤 מחפש את המילים בתוך הספרים…", 90)
             if (stale()) return@execute
             // no place in a book – maybe the name of a book or a folder (as they are on the device)
             val named = if (ref == null) try { Catalog.find(text, null, 8).filter { it.score >= 5f } } catch (e: Throwable) { emptyList() } else emptyList()
@@ -160,6 +191,7 @@ class VoiceActivity : BaseActivity() {
     }
 
     private fun show(text: String, ref: Ref?, noDaf: Boolean, targets: List<Jump.Target>, words: Results?, auto: Boolean, named: List<Catalog.Match> = emptyList()) {
+        stopLoading()
         results.removeAllViews()
         when {
             noDaf -> understood.text = "הבנתי שמדובר במסכת ${ref!!.work} – איזה דף? למשל: \"${ref.work} דף כ״ז עמוד א\""
@@ -186,7 +218,7 @@ class VoiceActivity : BaseActivity() {
         }
         val nums = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫"
         for ((k, t) in targets.withIndex()) results.addView(card((if (targets.size > 1) "${nums.getOrElse(k) { '•' }}  " else "📖 ") + t.book.title, Library.categoryOf(t.book.dir).joinToString(" › ") + " · " + t.note, true) {
-            ReaderActivity.open(this, t.book.path, t.page, refLabel = t.ref.label(), amudIndex = t.amudIndex ?: -1, exact = t.exact)
+            ReaderActivity.open(this, t.book.path, t.page, t.marks, refLabel = t.ref.label(), amudIndex = t.amudIndex ?: -1, exact = t.exact)
         })
         if (words != null) {
             val books = words.books.sortedByDescending { it.score }.take(25)
