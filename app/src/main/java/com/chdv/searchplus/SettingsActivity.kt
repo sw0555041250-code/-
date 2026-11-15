@@ -86,7 +86,12 @@ class SettingsActivity : BaseActivity() {
         section("חיפוש לפי משמעות (בינה מלאכותית)")
         val semReady = Semantic.ready(this)
         item(if (semReady) "מודל המשמעות מותקן ✓" else "הורדת מודל המשמעות (כ-120MB)",
-            if (semReady) "וקטורים באינדקס: ${Semantic.vectorCount(this)} · לחיצה לניהול" + (Semantic.lastError.takeIf { it.isNotEmpty() }?.let { "\n⚠ $it" } ?: "")
+            if (semReady) Semantic.vectorCount(this).let { n ->
+                if (n > 0) "קטעים באינדקס: $n · לחיצה לניהול"
+                else "האינדקס עוד ריק – הוא נבנה אחרי שקריאת הספרים מסתיימת" +
+                    (if (Progress.running && Progress.phase == "קורא ספרים" && Progress.total > 0) " (נותרו ${Progress.total - Progress.done} ספרים)" else "") +
+                    ".\nבינתיים שאלה ותשובה כבר עובדת – על העמודים שיש בהם את מילות השאלה. לחיצה לניהול"
+            } + (Semantic.lastError.takeIf { it.isNotEmpty() }?.let { "\n⚠ $it" } ?: "")
             else "מאפשר לכתוב שאלה או רעיון ולמצוא את המקומות שעוסקים בהם. עובד בתוך המכשיר, בלי אינטרנט") { semanticMenu() }
         if (semReady) item("🌙 בניית אינדקס המשמעות המלא (מומלץ בלילה)", "כל הספרים נקראים ומובנים פעם אחת. השאירו את המכשיר בטעינה עם התוכנה פתוחה או ברקע – בבוקר אפשר לשאול שאלות בלי אינטרנט" +
             (if (Progress.running) "\n⟳ " + Progress.text() else "")) {
@@ -131,8 +136,10 @@ class SettingsActivity : BaseActivity() {
             val opts = ArrayList<Pair<String, String>>()
             opts.add("internal" to "קורא מובנה – עמוד מדויק + סימון המילים (מומלץ)")
             apps.forEach { r -> opts.add("app:${r.activityInfo.packageName}/${r.activityInfo.name}" to r.loadLabel(packageManager).toString()) }
+            if (!Library.readEraInstalled(this)) opts.add("install-readera" to "⬇ ReadEra – לא מותקן במכשיר. לחיצה להתקנה")
             val cur = if (ow == "internal") "internal" else "app:$rp/${Prefs.s("readerCls", "")}"
             Sheet.choice(this, "ברירת מחדל לפתיחת ספרים", opts, cur) { k ->
+                if (k == "install-readera") { Library.installReadEra(this); return@choice }
                 Prefs.put("readerChosen", true)
                 if (k == "internal") Prefs.put("openWith", "internal") else {
                     val (pkg, cls) = k.removePrefix("app:").split('/', limit = 2)

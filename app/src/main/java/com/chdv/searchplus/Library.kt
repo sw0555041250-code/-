@@ -101,27 +101,48 @@ object Library {
      * file managers. Apps register differently (PDF type, any document, any file, by file name), so all
      * the ways are asked and merged.
      */
+    /** Known PDF readers, in the order they are offered (ReadEra first). */
+    private val READERS = listOf("org.readera", "org.readera.premium", "com.onyx.kreader", "com.onyx.neoreader", "com.flyersoft.moonreaderp",
+        "com.flyersoft.moonreader", "com.adobe.reader", "com.xodo.pdf.reader", "com.foobnix.pdf.reader", "com.google.android.apps.docs",
+        "com.microsoft.office.officehubrow", "com.mobisystems.office", "com.ebooks.ebookreader")
+
+    fun readEraInstalled(c: Context): Boolean = listOf("org.readera", "org.readera.premium").any {
+        try { c.packageManager.getPackageInfo(it, 0); true } catch (e: Exception) { false }
+    }
+
+    /** ReadEra's page in the app store (or its site, where there is no store). */
+    fun installReadEra(a: Activity) {
+        if (!a.safeStart(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=org.readera"))))
+            a.safeStart(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=org.readera")))
+    }
+
+    /**
+     * The apps that really open PDF files: those that declare PDF, plus known readers that are installed
+     * (ReadEra first). Apps that only take "any file" (gallery, installer, messages…) only when nothing else exists.
+     */
     fun pdfApps(c: Context): List<android.content.pm.ResolveInfo> {
         val pm = c.packageManager
-        val asks = ArrayList<Intent>()
-        for (scheme in listOf("content://x/y.pdf", "file:///sdcard/y.pdf")) {
-            for (type in listOf("application/pdf", "application/*", "*/*", null)) {
-                val u = Uri.parse(scheme)
-                asks.add(Intent(Intent.ACTION_VIEW).apply { if (type == null) data = u else setDataAndType(u, type) })
-            }
-        }
+        fun query(i: Intent) = try { pm.queryIntentActivities(i, android.content.pm.PackageManager.MATCH_ALL) } catch (e: Exception) { emptyList() }
+        val uris = listOf(Uri.parse("content://x/y.pdf"), Uri.parse("file:///sdcard/y.pdf"))
         val seen = LinkedHashMap<String, android.content.pm.ResolveInfo>()
-        for (i in asks) {
-            val found = try { pm.queryIntentActivities(i, android.content.pm.PackageManager.MATCH_ALL) } catch (e: Exception) { emptyList() }
-            for (r in found) {
+        fun add(list: List<android.content.pm.ResolveInfo>) {
+            for (r in list) {
                 val a = r.activityInfo ?: continue
                 if (a.packageName == c.packageName) continue
-                val key = a.packageName + "/" + a.name
-                if (key !in seen) seen[key] = r
+                if (a.packageName !in seen) seen[a.packageName] = r
             }
         }
-        // one entry per app (the first, most specific activity found)
-        return seen.values.distinctBy { it.activityInfo.packageName }.sortedBy { it.loadLabel(pm).toString() }
+        for (u in uris) add(query(Intent(Intent.ACTION_VIEW).setDataAndType(u, "application/pdf")))
+        // known readers that are installed but declare PDF differently (by file name, any type…)
+        for (pkg in READERS) if (pkg !in seen) {
+            val r = uris.flatMap { u -> listOf(Intent(Intent.ACTION_VIEW).setDataAndType(u, "*/*"), Intent(Intent.ACTION_VIEW).setData(u),
+                Intent(Intent.ACTION_VIEW).setDataAndType(u, "application/*")).flatMap { query(it.setPackage(pkg)) } }
+            add(r)
+        }
+        if (seen.isEmpty()) for (u in uris) for (t in listOf("application/*", "*/*", null))
+            add(query(Intent(Intent.ACTION_VIEW).apply { if (t == null) data = u else setDataAndType(u, t) }))
+        val rank = { r: android.content.pm.ResolveInfo -> READERS.indexOf(r.activityInfo.packageName).let { if (it < 0) 99 else it } }
+        return seen.values.sortedWith(compareBy<android.content.pm.ResolveInfo> { rank(it) }.thenBy { it.loadLabel(pm).toString() })
     }
 
     fun appName(c: Context, pkg: String): String = try {
@@ -138,6 +159,7 @@ object Library {
         items.add("📖 הקורא של חיפוש פלוס – עמוד מדויק + סימון המילים" to {
             Prefs.put("openWith", "internal"); Prefs.put("readerChosen", true); then()
         })
+        if (!readEraInstalled(a)) items.add("⬇ ReadEra – לא מותקן במכשיר. להתקנה" to { installReadEra(a) })
         for (r in pdfApps(a)) {
             items.add(r.loadLabel(pm).toString() to {
                 Prefs.put("openWith", "external"); Prefs.put("readerPkg", r.activityInfo.packageName); Prefs.put("readerCls", r.activityInfo.name)
@@ -202,7 +224,8 @@ object Library {
                 a.grantUriPermission(r.activityInfo.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 if (!a.safeStart(Intent(i).setClassName(r.activityInfo.packageName, r.activityInfo.name))) a.toast("לא ניתן לפתוח")
             }
-        } + listOf("עוד אפליקציות… (הרשימה של המכשיר)" to {
+        } + (if (readEraInstalled(a)) emptyList() else listOf("⬇ ReadEra – לא מותקן במכשיר. להתקנה" to { installReadEra(a) })) +
+            listOf("עוד אפליקציות… (הרשימה של המכשיר)" to {
             if (!a.safeStart(Intent.createChooser(i, "פתיחה באמצעות"))) a.toast("לא נמצאה אפליקציה")
         }))
     }
