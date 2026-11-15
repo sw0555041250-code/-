@@ -50,6 +50,8 @@ class App : Application() {
             prev?.uncaughtException(t, e)
         }
         watchMainThread()
+        // recording was removed from the app: free the space its speech models took
+        Thread { try { ModelStore.dropSpeechModels(this) } catch (e: Throwable) {} }.start()
     }
 
     /**
@@ -79,7 +81,7 @@ class App : Application() {
         super.onTrimMemory(level)
         // the system is short of memory: free the AI models (they load again when needed)
         if (level >= TRIM_MEMORY_RUNNING_LOW) {
-            Thread { try { Semantic.close() } catch (e: Throwable) {}; try { if (!Progress.paused) VoiceModels.Engine.release() } catch (e: Throwable) {} }.start()
+            Thread { try { Semantic.close(); Semantic.Deep.close() } catch (e: Throwable) {} }.start()
         }
     }
 
@@ -145,7 +147,7 @@ object Col {
     val GOLD = 0xFFFFD65A.toInt()
     val HL = 0x77FFC800
     val RED = 0xFFB00020.toInt()
-    /** Colours of the feature tiles (voice, meaning, words, books, organize, settings). */
+    /** Colours of the feature tiles (quick jump, meaning, words, books, organize, settings). */
     val TILES: List<Pair<Int, Int>> get() = if (c) listOf(
         0xFF3B4FD8.toInt() to 0xFF6F7CFF.toInt(),
         0xFF7B3FE4.toInt() to 0xFFB06BFF.toInt(),

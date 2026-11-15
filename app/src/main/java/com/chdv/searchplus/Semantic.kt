@@ -280,7 +280,7 @@ object Semantic {
      */
     object Deep {
         private const val REPO = "https://huggingface.co/Xenova/bge-m3/resolve/main/"
-        fun dir(c: Context): File = File(VoiceModels.dir(c, "x").parentFile, "bge-m3")
+        fun dir(c: Context): File = File(ModelStore.base(c), "bge-m3")
         private fun model(c: Context) = File(dir(c), "model_quantized.onnx")
         private fun tok(c: Context) = File(dir(c), "tokenizer.json")
         private fun vocab(c: Context) = File(dir(c), "vocab.bin")
@@ -307,8 +307,8 @@ object Semantic {
         @Synchronized
         fun <T> use(c: Context, f: (E5Model) -> T): T {
             val mm = m ?: run {
-                Semantic.close(); VoiceModels.Engine.release(); System.gc()
-                if (VoiceModels.freeMemoryMb(c) < 700) throw IllegalStateException("אין מספיק זיכרון פנוי למודל ההבנה")
+                Semantic.close(); System.gc()
+                if (ModelStore.freeMemoryMb(c) < 700) throw IllegalStateException("אין מספיק זיכרון פנוי למודל ההבנה")
                 E5Model(OrtEnvironment.getEnvironment(), model(c).absolutePath, E5Tokenizer.load(vocab(c)), max(1, min(4, Runtime.getRuntime().availableProcessors())), cls = true, lowMemory = true)
             }.also { m = it }
             return f(mm)
@@ -362,5 +362,31 @@ object Semantic {
             if (best == null || d > best.score) best = Answer(sn, pid, d)
         }
         return best?.takeIf { it.score > 0.8f }
+    }
+}
+
+/** Where big model files go: the storage with the most free space (the device's memory or the memory card). */
+object ModelStore {
+    fun base(c: Context): File {
+        val saved = Prefs.s("whisperDir", "") // the name stays, so models already downloaded are found
+        if (saved.isNotEmpty() && File(saved).let { it.exists() && it.canWrite() }) return File(saved)
+        val best = (listOf(c.filesDir) + c.getExternalFilesDirs(null).filterNotNull()).filter { it.exists() || it.mkdirs() }
+            .maxByOrNull { it.usableSpace } ?: c.filesDir
+        Prefs.put("whisperDir", best.absolutePath)
+        return best
+    }
+
+    fun freeMemoryMb(c: Context): Long {
+        val mi = android.app.ActivityManager.MemoryInfo()
+        (c.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager).getMemoryInfo(mi)
+        return mi.availMem / (1024 * 1024)
+    }
+
+    /** Voice search was removed: the speech models downloaded before are deleted (once). */
+    fun dropSpeechModels(c: Context) {
+        if (Prefs.b("speechDropped", false)) return
+        val places = (listOf(c.filesDir, base(c)) + c.getExternalFilesDirs(null).filterNotNull()).distinct()
+        for (d in places) d.listFiles()?.filter { it.isDirectory && it.name.startsWith("whisper-") }?.forEach { it.deleteRecursively() }
+        Prefs.put("speechDropped", true)
     }
 }

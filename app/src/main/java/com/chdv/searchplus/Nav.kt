@@ -14,14 +14,13 @@ import android.widget.ScrollView
 
 /**
  * The side menu (opens from the right): every part of the app as its own screen –
- * voice search, question & answer, word search, browsing, organizing, settings.
+ * quick jump, question & answer, word search, browsing, organizing, settings.
  */
 object Nav {
     class Item(val icon: String, val title: String, val sub: String, val go: (Activity) -> Unit)
 
     val ITEMS: List<Item> = listOf(
         Item("⚡", "מעבר מהיר", "כותבים ספר ומקום – והוא נפתח", { a -> a.startActivity(Intent(a, VoiceActivity::class.java).putExtra("mode", "type")) }),
-        Item("🎤", "חיפוש קולי", "אומרים – והספר נפתח במקום", { a -> a.startActivity(Intent(a, VoiceActivity::class.java).putExtra("listen", true)) }),
         Item("💡", "שאלה ותשובה", "חיפוש לפי משמעות", { a -> a.startActivity(Intent(a, MainActivity::class.java).putExtra("screen", "meaning").addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)) }),
         Item("🔤", "חיפוש מילים", "מילה או ביטוי בתוך כל הספרים", { a -> a.startActivity(Intent(a, MainActivity::class.java).putExtra("screen", "words").addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)) }),
         Item("📚", "עיון בספרים", "תיקיות וקטגוריות", { a -> a.startActivity(Intent(a, BrowseActivity::class.java)) }),

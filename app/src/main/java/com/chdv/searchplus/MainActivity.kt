@@ -112,7 +112,7 @@ class MainActivity : BaseActivity() {
                 titleView.text = "🔤 חיפוש מילים"; subView.text = "מילה או ביטוי בתוך כל הספרים"
                 input.hint = "מילה או ביטוי… למשל: רבי שמעון"
             }
-            else -> { titleView.text = "חיפוש פלוס"; subView.text = "חיפוש מעמיק בתוך הספרים שלך"; input.hint = "מה לחפש? או לחצו 🎤 ודברו" }
+            else -> { titleView.text = "חיפוש פלוס"; subView.text = "חיפוש מעמיק בתוך הספרים שלך"; input.hint = "מה לחפש? מילה, ביטוי או שאלה" }
         }
         modeRow.visibility = if (k == "home") View.VISIBLE else View.GONE
         buildModes()
@@ -120,7 +120,7 @@ class MainActivity : BaseActivity() {
         if (!q.isNullOrBlank()) { input.setText(q); doSearch() } else if (results == null) showHome()
     }
 
-    private fun openVoice() = startActivity(Intent(this, VoiceActivity::class.java).putExtra("listen", true))
+    private fun openJump() = startActivity(Intent(this, VoiceActivity::class.java).putExtra("mode", "type"))
 
     override fun onResume() {
         super.onResume()
@@ -184,7 +184,7 @@ class MainActivity : BaseActivity() {
             setPadding(dp(10), 0, dp(10), 0)
             setOnClickListener { Nav.open(this@MainActivity) }
         }, lp(0, WRAP, 1f))
-        head.addView(headerButton("🎤") { openVoice() })
+        head.addView(headerButton("⚡") { openJump() })
         head.addView(headerButton("⚙") { startActivity(Intent(this, SettingsActivity::class.java)) })
         root.addView(head, lp(MATCH, WRAP))
 
@@ -205,7 +205,7 @@ class MainActivity : BaseActivity() {
             setPadding(dp(14), dp(2), dp(4), dp(2))
         }
         input = EditText(this).apply {
-            hint = "מה לחפש? או לחצו 🎤 ודברו"
+            hint = "מה לחפש? מילה, ביטוי או שאלה"
             setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18f * scale())
             setTextColor(Col.TEXT)
             setHintTextColor(0xFF8A8A8A.toInt())
@@ -221,12 +221,6 @@ class MainActivity : BaseActivity() {
         box.addView(label("✕", 18f, Col.SUB).apply {
             setPadding(dp(10), dp(8), dp(10), dp(8))
             setOnClickListener { input.setText(""); results = null; jumpBar.visibility = View.GONE; showHome() }
-        })
-        box.addView(label("🎤", 22f, Col.ACC, true).apply {
-            setPadding(dp(10), dp(6), dp(10), dp(6))
-            background = pressBg(Color.TRANSPARENT, Col.ACC_LIGHT, 18)
-            contentDescription = "חיפוש קולי"
-            setOnClickListener { openVoice() }
         })
         box.addView(pill("חיפוש") { doSearch() }, lp(WRAP, WRAP))
         root.addView(box, lp(MATCH, WRAP).m(dp(12), dp(4), dp(12), dp(6)))
@@ -470,24 +464,19 @@ class MainActivity : BaseActivity() {
             }, lp(MATCH, WRAP).m(0, dp(6), 0, dp(6)))
         }
 
-        // the big microphone: say what you are looking for
+        // quick jump: write a book and a place – it opens there
         val mic = vbox().apply {
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(dp(16), dp(18), dp(16), dp(16))
             background = pressBg(Col.BG, Col.ACC_LIGHT, 22, dp(2), Col.ACC)
-            setOnClickListener { openVoice() }
+            setOnClickListener { openJump() }
         }
-        mic.addView(label("🎤", 46f, Col.ACC, true).apply {
-            gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER
-            background = roundBg(Col.ACC_LIGHT, dp(48).toFloat(), dp(3), Col.ACC)
-            setPadding(dp(18), dp(10), dp(18), dp(14))
-        }, lp(dp(96), dp(96)))
-        mic.addView(label("לחצו ודברו", 19f, Col.TEXT, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER; setPadding(0, dp(10), 0, dp(2)) }, lp(MATCH, WRAP))
-        mic.addView(label("אומרים מה מחפשים – והספר נפתח במקום. עובד בלי אינטרנט", 13.5f, Col.SUB).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, lp(MATCH, WRAP))
+        mic.addView(label("⚡ מעבר מהיר", 21f, Col.TEXT, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }, lp(MATCH, WRAP))
+        mic.addView(label("כותבים ספר ומקום – והספר נפתח בעמוד הנכון", 13.5f, Col.SUB).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER; setPadding(0, dp(4), 0, 0) }, lp(MATCH, WRAP))
         val ex = FlowLayout(this).apply { setPadding(0, dp(12), 0, 0) }
-        listOf("ברכות דף כ״ז ע״א", "לקוטי שיחות חלק ד עמוד 58", "לקוטי שיחות חלק ד נח", "תניא פרק ה", "מה מברכים על פרי העץ").forEach { e ->
+        listOf("ברכות דף כ״ז ע״א", "לקוטי שיחות חלק ד עמוד 58", "לקוטי שיחות חלק ה נח", "תניא פרק ה").forEach { e ->
             ex.addView(chip("“$e”", false) {
-                startActivity(Intent(this, VoiceActivity::class.java).putExtra("q", e))
+                startActivity(Intent(this, VoiceActivity::class.java).putExtra("mode", "type").putExtra("q", e))
             })
         }
         mic.addView(ex, lp(MATCH, WRAP))
@@ -536,7 +525,7 @@ class MainActivity : BaseActivity() {
                 "• אחרי החיפוש לוחצים על קטגוריה (תיקייה) כדי למקד – ושוב על תת-תיקייה, וכן הלאה.\n" +
                 "• חיפוש לפי משמעות: כותבים רעיון במילים שלך ומקבלים קטעים שעוסקים בו.\n" +
                 "• לחיצה על תוצאה פותחת את הספר בדיוק בעמוד, והמילים מסומנות.\n" +
-                "• 🎤 חיפוש קולי: לוחצים על המיקרופון ואומרים – \"ברכות דף כ״ז עמוד א\", \"ליקוטי שיחות חלק ג ויצא\", או שאלה. התוכנה פותחת ישר את המקום.", 14.5f, Col.SUB).apply { setLineSpacing(0f, 1.15f) })
+                "• ⚡ מעבר מהיר: כותבים \"ברכות דף כ״ז עמוד א\", \"ליקוטי שיחות חלק ג ויצא\" – והספר נפתח ישר במקום.", 14.5f, Col.SUB).apply { setLineSpacing(0f, 1.15f) })
         homeBox.addView(label("\nפותח על ידי שניאור וילהלם · מופץ לתועלת הרבים", 12.5f, Col.SUB).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER })
         homeBox.addView(label("יחי אדוננו מורנו ורבנו מלך המשיח לעולם ועד", 14f, Col.ACC, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER; setPadding(0, dp(6), 0, dp(10)) })
         if (!Col.isEink) for (i in 0 until minOf(homeBox.childCount, 8)) homeBox.getChildAt(i).apply {
@@ -597,8 +586,6 @@ class MainActivity : BaseActivity() {
      * killing it for memory, which no error handler can catch). Show it once, with a fix where there is one.
      */
     private fun checkLastExit() {
-        val busy = Prefs.l("voiceBusy", 0L)
-        Prefs.put("voiceBusy", 0L)
         // the meaning index was being built when the app closed: don't let it close the app again on every start
         val sem = Prefs.l("semBusy", 0L)
         Prefs.put("semBusy", 0L)
@@ -611,7 +598,6 @@ class MainActivity : BaseActivity() {
             return
         }
         if (android.os.Build.VERSION.SDK_INT < 30) {
-            if (busy > 0) voiceCrashSheet("")
             return
         }
         try {
@@ -622,7 +608,7 @@ class MainActivity : BaseActivity() {
             val r = e.reason
             val bad = r == android.app.ApplicationExitInfo.REASON_CRASH || r == android.app.ApplicationExitInfo.REASON_CRASH_NATIVE ||
                 r == android.app.ApplicationExitInfo.REASON_LOW_MEMORY || r == android.app.ApplicationExitInfo.REASON_ANR ||
-                (r == android.app.ApplicationExitInfo.REASON_SIGNALED && busy > 0)
+                false
             if (!bad) return
             val why = when (r) {
                 android.app.ApplicationExitInfo.REASON_LOW_MEMORY, android.app.ApplicationExitInfo.REASON_SIGNALED -> "המכשיר סגר את התוכנה כי נגמר הזיכרון"
@@ -646,51 +632,21 @@ class MainActivity : BaseActivity() {
             val details = "$why\n(${e.reason}/${e.status} ${e.description ?: ""}) גרסה ${packageManager.getPackageInfo(packageName, 0).versionName}" +
                 (trace?.let { "\n\n$it" } ?: "") + (anr?.takeIf { it.isNotBlank() }?.let { "\n\n$it" } ?: "") +
                 (if (anr.isNullOrBlank()) freeze?.let { "\n\n$it" } ?: "" else "")
-            if (busy > 0 && e.timestamp >= busy) voiceCrashSheet(details)
-            else Sheet.confirm(this, "התוכנה נסגרה בפעם הקודמת", details + "\n\nאפשר להעתיק את הפרטים ולשלוח למפתח.", "העתקת הפרטים") {
+            Sheet.confirm(this, "התוכנה נסגרה בפעם הקודמת", details + "\n\nאפשר להעתיק את הפרטים ולשלוח למפתח.", "העתקת הפרטים") {
                 (getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("exit", details))
                 toast("הועתק")
             }
         } catch (x: Throwable) {}
     }
 
-    private fun voiceCrashSheet(details: String) {
-        val cur = VoiceModels.spec()
-        val lower = VoiceModels.SPECS.getOrNull(VoiceModels.SPECS.indexOf(cur) - 1)
-        val items = ArrayList<Pair<String, () -> Unit>>()
-        if (lower != null) items.add("לעבור לזיהוי ${lower.title} (קל יותר למכשיר)" to {
-            Prefs.put("whisperModel", lower.key)
-            if (!VoiceModels.ready(this, lower.key)) VoiceSearch.downloadNow(this, lower.key) { toast("מוכן – נסו שוב את המיקרופון") } else toast("עבר לזיהוי ${lower.title} – נסו שוב")
-        })
-        if (VoiceSearch.systemAvailable(this)) items.add("להשתמש בשירות הדיבור של המכשיר (צריך אינטרנט)" to { Prefs.put("voiceEngine", "system"); toast("נסו שוב את המיקרופון") })
-        items.add("להעתיק את הפרטים למפתח" to {
-            (getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("voice", "זיהוי דיבור נסגר: $details"))
-            toast("הועתק")
-        })
-        items.add("להמשיך כרגיל" to {})
-        Sheet.actions(this, "זיהוי הדיבור עצר את התוכנה בפעם הקודמת" + if (details.isNotEmpty()) "\n$details" else "", items)
-    }
-
-    // ---------------- voice and direct jumps ----------------
-
-    private val questionWords = setOf("מה", "מהו", "מהי", "איך", "כיצד", "למה", "מדוע", "מתי", "מי", "האם", "היכן", "איפה", "מאיפה", "כמה")
-
-    private fun onVoice(text: String) {
-        input.setText(text)
-        input.setSelection(input.text.length)
-        val first = Heb.words(text).firstOrNull()
-        if (RefParser.parse(text) == null && first != null && first in questionWords && Semantic.ready(this) && !semantic) {
-            semantic = true; buildModes()
-        }
-        doSearch(autoOpen = true)
-    }
+    // ---------------- direct jumps ----------------
 
     /** When the search is a reference (ברכות דף כז / ליקוטי שיחות חלק ג ויצא), offer to go straight there. */
     private fun showJump(q: String, token: Int, auto: Boolean, sig: android.os.CancellationSignal? = null) {
         jumpBar.visibility = View.GONE
         val ref = try { RefParser.parse(q) } catch (e: Throwable) { null } ?: return
         if (ref.kind == com.chdv.searchplus.core.Ref.Kind.GEMARA && ref.daf == null) {
-            jumpBar.text = "⤶ ${ref.work}: לא הבנתי איזה דף. אמרו למשל \"${ref.work} דף כ״ז עמוד א\""
+            jumpBar.text = "⤶ ${ref.work}: לא הבנתי איזה דף. כתבו למשל \"${ref.work} דף כ״ז עמוד א\""
             jumpBar.visibility = View.VISIBLE
             jumpBar.setOnClickListener(null)
             return
@@ -724,11 +680,6 @@ class MainActivity : BaseActivity() {
 
     private fun openTarget(t: Jump.Target) {
         ReaderActivity.open(this, t.book.path, t.page, t.marks, refLabel = t.ref.label(), amudIndex = t.amudIndex ?: -1, exact = t.exact)
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == VoiceSearch.REQ_MIC) VoiceSearch.onPermission(this, grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED)
     }
 
     private fun visibleBooks(): List<BookHit> {

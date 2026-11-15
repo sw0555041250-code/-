@@ -25,7 +25,6 @@ class VoiceActivity : BaseActivity() {
     private lateinit var heard: EditText
     private lateinit var understood: TextView
     private lateinit var results: LinearLayout
-    private lateinit var status: TextView
     private var token = 0
     @Volatile private var cancel: android.os.CancellationSignal? = null
     @Volatile private var inside: List<Triple<Book, Int, List<String>>> = emptyList()
@@ -60,48 +59,30 @@ class VoiceActivity : BaseActivity() {
     }
 
     private fun stopLoading() { bar.progress = 100; loading.removeCallbacks(tick); loading.visibility = View.GONE }
-    private val typing by lazy { intent.getStringExtra("mode") == "type" }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val box = vbox().apply { setPadding(dp(16), dp(10), dp(16), dp(30)) }
 
-        // the big microphone
-        val mic = vbox().apply {
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(16), dp(22), dp(16), dp(18))
-            background = Col.gradient(Col.TILES[0].first, Col.TILES[0].second, dp(26).toFloat())
-            setOnClickListener { listen() }
-        }
-        mic.addView(label("🎤", 64f, Col.ACC, true).apply {
-            gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER
-            background = roundBg(Color.WHITE, dp(70).toFloat(), dp(4), if (Col.isEink) Col.ACC else 0x55FFFFFF)
-        }, lp(dp(140), dp(140)))
-        mic.addView(label("לחצו ודברו", 22f, Color.WHITE, true).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER; setPadding(0, dp(12), 0, 0) }, lp(MATCH, WRAP))
-        status = label(engineNote(), 13.5f, 0xFFE6E9FF.toInt()).apply { gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER }
-        mic.addView(status, lp(MATCH, WRAP))
-        if (!typing) box.addView(mic, lp(MATCH, WRAP).m(0, dp(4), 0, dp(14)))
-        else box.addView(vbox().apply {
+        box.addView(vbox().apply {
             background = Col.gradient(Col.TILES[3].first, Col.TILES[3].second, dp(20).toFloat())
             setPadding(dp(18), dp(16), dp(18), dp(16))
             addView(label("⚡ לאן לקפוץ?", 22f, Color.WHITE, true))
-            addView(label("כותבים ספר ומקום – והוא נפתח. למשל: \"לקו״ש חלק כ״ד עמוד 358\", \"ברכות כ״ג\", \"שו״ע אדה״ז סימן רע״ח\"", 14f, 0xEEFFFFFF.toInt()).apply { setPadding(0, dp(6), 0, 0) })
+            addView(label("כותבים ספר ומקום, ולוחצים „לפתוח”. למשל: \"לקו״ש חלק כ״ד עמוד 358\", \"ברכות כ״ג\", \"שו״ע אדה״ז סימן רע״ח\"", 14f, 0xEEFFFFFF.toInt()).apply { setPadding(0, dp(6), 0, 0) })
         }, lp(MATCH, WRAP).m(0, dp(4), 0, dp(14)))
 
-        // what was heard – can be corrected by hand
-        box.addView(label("שמעתי", 13.5f, Col.SUB, true))
+        box.addView(label("מה לפתוח?", 13.5f, Col.SUB, true))
         val row = hbox().apply { background = roundBg(Col.CARD, dp(22).toFloat(), dp(1.5f), Col.ACC); setPadding(dp(14), 0, dp(4), 0) }
         heard = EditText(this).apply {
-            hint = "מה שתגידו יופיע כאן – אפשר גם לתקן ולהקליד"
+            hint = "ספר ומקום – למשל: ליקוטי שיחות חלק ה נח"
             background = null; setSingleLine(); textDirection = View.TEXT_DIRECTION_FIRST_STRONG_RTL
             setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18f * scale())
             imeOptions = EditorInfo.IME_ACTION_SEARCH
-            setOnEditorActionListener { _, a, _ -> if (a == EditorInfo.IME_ACTION_SEARCH) { handle(text.toString(), false); true } else false }
+            setOnEditorActionListener { _, a, _ -> if (a == EditorInfo.IME_ACTION_SEARCH) { handle(text.toString(), true); true } else false }
         }
         row.addView(heard, lp(0, WRAP, 1f))
-        if (typing) row.addView(label("🎤", 22f, Col.ACC, true).apply { setPadding(dp(8), dp(4), dp(8), dp(4)); setOnClickListener { listen() } })
-        row.addView(pill(if (typing) "לפתוח" else "חיפוש") { handle(heard.text.toString(), typing) }, lp(WRAP, WRAP))
-        // no searching while typing (it got in the way): the search starts on "לפתוח" / Enter
+        row.addView(pill("לפתוח") { handle(heard.text.toString(), true) }, lp(WRAP, WRAP))
+        // the search starts only on "לפתוח" / Enter – never while typing
         box.addView(row, lp(MATCH, WRAP).m(0, dp(4), 0, dp(10)))
 
         understood = label("", 16f, Col.ACC, true)
@@ -130,39 +111,19 @@ class VoiceActivity : BaseActivity() {
             box.addView(hf, lp(MATCH, WRAP))
         }
         // examples
-        box.addView(label(if (typing) "אפשר לכתוב למשל" else "אפשר לומר למשל", 13.5f, Col.SUB, true).apply { setPadding(0, dp(16), 0, dp(4)) })
+        box.addView(label("אפשר לכתוב למשל", 13.5f, Col.SUB, true).apply { setPadding(0, dp(16), 0, dp(4)) })
         val ex = FlowLayout(this)
         listOf("ברכות דף כ״ז עמוד א", "לקו״ש חלק כ״ד עמוד 358", "ליקוטי שיחות חלק ד שיחה לפרשת נח", "שו״ע אדה״ז סימן רע״ח", "תניא פרק ה", "מה מברכים על פרי העץ").forEach { e ->
             ex.addView(chip("“$e”", false) { heard.setText(e); handle(e, false) })
         }
         box.addView(ex, lp(MATCH, WRAP))
 
-        screen(if (typing) "⚡ מעבר מהיר" else "🎤 חיפוש קולי", ScrollView(this).apply { addView(box) })
-        if (typing) heard.post { heard.requestFocus(); (getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).showSoftInput(heard, 0) }
+        screen("⚡ מעבר מהיר", ScrollView(this).apply { addView(box) })
+        heard.post { heard.requestFocus(); (getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).showSoftInput(heard, 0) }
         intent.getStringExtra("q")?.let { heard.setText(it); handle(it, true) }
-        if (intent.getBooleanExtra("listen", false) && savedInstanceState == null && intent.getStringExtra("q") == null) heard.post { listen() }
     }
 
-    private fun engineNote() = if (VoiceSearch.engine(this) == "system") "זיהוי: שירות הדיבור של המכשיר" else
-        "זיהוי בתוך המכשיר – בלי אינטרנט" + if (!VoiceModels.ready(this)) " (צריך להוריד פעם אחת)" else ""
-
-    private fun listen() {
-        VoiceSearch.start(this) { t ->
-            heard.setText(t); heard.setSelection(heard.text.length)
-            // "transcribe only": the words are written in the box, the search waits for the user
-            if (Prefs.b("voiceSearchAuto", true)) handle(t, true)
-            else { understood.text = "✍ נכתב. אפשר לתקן, ואז \"${if (typing) "לפתוח" else "חיפוש"}\""; heard.requestFocus() }
-        }
-    }
-
-    override fun onResume() { super.onResume(); status.text = engineNote() }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == VoiceSearch.REQ_MIC) VoiceSearch.onPermission(this, grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED)
-    }
-
-    /** Spoken (or typed) words → a place in a book, or the books that contain them. */
+    /** Typed words → a place in a book, or the books that contain them. */
     private fun handle(raw: String, auto: Boolean, quiet: Boolean = false) {
         val text = raw.trim().trimEnd('.', '?', '!')
         if (text.isEmpty()) return
@@ -258,7 +219,7 @@ class VoiceActivity : BaseActivity() {
         })
         if (words != null) {
             val books = words.books.sortedByDescending { it.score }.take(25)
-            if (books.isEmpty()) results.addView(label("לא נמצא. נסו לומר אחרת, או לשאול לפי משמעות ⬇", 15f, Col.SUB).apply { setPadding(dp(4), dp(6), dp(4), dp(6)) })
+            if (books.isEmpty()) results.addView(label("לא נמצא. נסו לכתוב אחרת, או לשאול לפי משמעות ⬇", 15f, Col.SUB).apply { setPadding(dp(4), dp(6), dp(4), dp(6)) })
             for (h in books) {
                 val first = h.pages.firstOrNull()?.page ?: 1
                 results.addView(card("📖 ${h.book.title}", h.category.joinToString(" › ").ifEmpty { "תיקייה ראשית" } +
@@ -269,20 +230,6 @@ class VoiceActivity : BaseActivity() {
             if (words.books.size > books.size) results.addView(pill("לכל ${words.books.size} התוצאות", false) { openMain("words", text) }, lp(MATCH, WRAP).m(0, dp(8), 0, 0))
         }
         results.addView(pill("💡 לשאול את זה לפי משמעות", false) { openMain("meaning", text) }, lp(MATCH, WRAP).m(0, dp(10), 0, 0))
-        // nothing useful came out: offer the more accurate speech recognition
-        val weak = noDaf || (targets.isEmpty() && (words == null || words.books.isEmpty())) || (ref != null && targets.isEmpty())
-        val next = VoiceModels.nextSpec()
-        if (weak && next != null && VoiceSearch.engine(this) == "whisper") {
-            results.addView(pill("🎤 לא הבין נכון? לנסות זיהוי ${next.title} (${next.note})") {
-                Prefs.put("whisperModel", next.key); VoiceModels.Engine.release()
-                if (VoiceModels.ready(this, next.key)) listen() else VoiceSearch.downloadNow(this, next.key) { listen() }
-            }, lp(MATCH, WRAP).m(0, dp(10), 0, 0))
-        } else if (weak && VoiceSearch.engine(this) == "whisper" && VoiceSearch.systemAvailable(this)) {
-            // the most advanced: the device's online speech service (Google), much stronger in Hebrew
-            results.addView(pill("🌐 לא הבין נכון? לנסות זיהוי מתקדם דרך האינטרנט") {
-                Prefs.put("voiceEngine", "auto"); Prefs.put("systemFailed", false); listen()
-            }, lp(MATCH, WRAP).m(0, dp(10), 0, 0))
-        }
         if (auto && targets.size == 1) results.postDelayed({ if (!isFinishing) results.getChildAt(0)?.performClick() }, 700)
     }
 
