@@ -27,24 +27,49 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /** Live progress, read by the screens. */
+/**
+ * The scan's progress. The scan runs in its own process (":scan") – if a damaged book or lack of
+ * memory brings it down, the screen stays open and the scan comes back by itself. The scan process
+ * writes its state to a small file every second; the app's screens read it from there.
+ */
 object Progress {
-    @Volatile var running = false
-    @Volatile var phaseStart = 0L
-    @Volatile var phase = ""
-        set(v) { if (v != field) { phaseStart = System.currentTimeMillis() }; field = v }
-    @Volatile var done = 0
-    @Volatile var total = 0
-    @Volatile var current = ""
-    @Volatile var cancel = false
-    @Volatile var lastFinished = 0L
+    /** True inside the scan process (set in App.onCreate). */
+    @Volatile var inScan = false
+
+    @Volatile private var _running = false
+    @Volatile private var _phaseStart = 0L
+    @Volatile private var _phase = ""
+    @Volatile private var _done = 0
+    @Volatile private var _total = 0
+    @Volatile private var _current = ""
+    @Volatile private var _cancel = false
+    @Volatile private var _lastFinished = 0L
+
+    var running: Boolean get() = if (inScan) _running else snap().running; set(v) { _running = v }
+    val phaseStart: Long get() = if (inScan) _phaseStart else snap().phaseStart
+    var phase: String
+        get() = if (inScan) _phase else snap().phase
+        set(v) { if (v != _phase) _phaseStart = System.currentTimeMillis(); _phase = v }
+    var done: Int get() = if (inScan) _done else snap().done; set(v) { _done = v }
+    var total: Int get() = if (inScan) _total else snap().total; set(v) { _total = v }
+    var current: String get() = if (inScan) _current else snap().current; set(v) { _current = v }
+    var lastFinished: Long get() = if (inScan) _lastFinished else snap().lastFinished; set(v) { _lastFinished = v }
+    /** Stop the scan. From a screen: a flag file the scan process picks up within a second. */
+    var cancel: Boolean
+        get() = _cancel
+        set(v) {
+            if (inScan) _cancel = v
+            else if (v) try { File(App.ctx.filesDir, "scan.cancel").writeText("1") } catch (e: Throwable) {}
+        }
     /** A single book the user asked to OCR now. */
     @Volatile var ocrFile: Long? = null
-    /** Set while the user is speaking / waiting for an answer, so the background work gives them the processor and memory. */
+    /** Kept for the background work's pauses (nothing pauses it now). */
     @Volatile var paused = false
 
     fun waitWhilePaused() { var n = 0; while (paused && !cancel && n < 1200) { Thread.sleep(100); n++ } }
 
     fun text(): String = if (!running) "" else buildString {
+        val total = total; val done = done
         append(phase)
         if (total > 0) append("  $done / $total")
         val el = System.currentTimeMillis() - phaseStart
@@ -52,7 +77,45 @@ object Progress {
             val left = el / done * (total - done) / 60_000
             append(if (left >= 60) "  · עוד כ-${left / 60} שעות ${left % 60} דק׳" else "  · עוד כ-${left.coerceAtLeast(1)} דק׳")
         }
-        if (current.isNotEmpty()) append("\n").append(current)
+        val cur = current
+        if (cur.isNotEmpty()) append("\n").append(cur)
+    }
+
+    // ---- between the processes ----
+    private class Snap(val running: Boolean, val phaseStart: Long, val phase: String, val done: Int, val total: Int, val current: String, val lastFinished: Long)
+    @Volatile private var cached = Snap(false, 0, "", 0, 0, "", 0)
+    @Volatile private var readAt = 0L
+    private fun stateFile() = File(App.ctx.filesDir, "scan.state")
+
+    private fun snap(): Snap {
+        val now = System.currentTimeMillis()
+        if (now - readAt < 700) return cached
+        readAt = now
+        cached = try {
+            val f = stateFile()
+            if (!f.exists()) Snap(false, 0, "", 0, 0, "", 0) else {
+                val m = f.readText().lines().filter { '=' in it }.associate { it.substringBefore('=') to it.substringAfter('=') }
+                // the scan writes every second: an old file = the scan process is gone
+                val alive = now - (m["beat"]?.toLongOrNull() ?: 0L) < 6000
+                Snap(alive && m["running"] == "1", m["phaseStart"]?.toLongOrNull() ?: 0L, m["phase"] ?: "", m["done"]?.toIntOrNull() ?: 0,
+                    m["total"]?.toIntOrNull() ?: 0, (m["current"] ?: "").replace("\\n", "\n"), m["lastFinished"]?.toLongOrNull() ?: 0L)
+            }
+        } catch (e: Throwable) { cached }
+        return cached
+    }
+
+    /** Scan process: write the state for the screens, and pick up a stop request. */
+    fun publish(c: Context) {
+        try {
+            val cf = File(c.filesDir, "scan.cancel")
+            if (cf.exists()) { cf.delete(); _cancel = true }
+            val t = "running=${if (_running) 1 else 0}\nbeat=${System.currentTimeMillis()}\nphaseStart=$_phaseStart\nphase=$_phase\ndone=$_done\ntotal=$_total\n" +
+                "current=${_current.replace("\n", "\\n")}\nlastFinished=$_lastFinished\n" +
+                "firstDone=${if (Prefs.b("firstScanDone", false)) 1 else 0}\nsomeRead=${if (Prefs.b("someRead", false)) 1 else 0}\n"
+            val tmp = File(c.filesDir, "scan.state.tmp")
+            tmp.writeText(t)
+            tmp.renameTo(File(c.filesDir, "scan.state"))
+        } catch (e: Throwable) {}
     }
 }
 
@@ -115,9 +178,10 @@ object Indexer {
         return t
     }
 
-    fun start(c: Context) {
+    fun start(c: Context, ocrFile: Long = 0L) {
         if (!Library.hasAccess(c) || Library.roots().isEmpty()) return
         val i = Intent(c, IndexService::class.java)
+        if (ocrFile > 0) i.putExtra("ocrFile", ocrFile)
         if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i) else c.startService(i)
     }
 
@@ -179,6 +243,10 @@ object Indexer {
         // the library has been read once – from now on only new or changed books are read
         if (!Progress.cancel) Prefs.put("firstScanDone", true)
 
+        if (Prefs.l("semBusy", 0L) > 0) {
+            Prefs.put("semBusy", 0L); Prefs.put("semantic", false)
+            Semantic.lastError = "בניית אינדקס המשמעות נעצרה כי המכשיר סגר אותה (כנראה חוסר זיכרון). אפשר להפעיל שוב מההגדרות."
+        }
         // 3. meaning index (before OCR: OCR of a big library can take days, and must not hold this back)
         if (Prefs.b("semantic", false) && Semantic.ready(c)) {
             try { Semantic.indexPending(c) } catch (e: Throwable) { Semantic.lastError = e.message ?: e.javaClass.simpleName }
@@ -250,6 +318,9 @@ object Ocr {
                         val b = db.book(fileId)
                         if (b == null) { db.saveOcr(pageId, fileId, null); continue }
                         Progress.current = "${b.title} – עמוד $page"
+                        // a page that closed the scan before (damaged picture, lack of memory): skip it
+                        if (Prefs.l("ocrPage", 0L) == pageId) { db.saveOcr(pageId, fileId, null); Prefs.commit("ocrPage", 0L); continue }
+                        Prefs.commit("ocrPage", pageId)
                         if (fileId != lastFile) {
                             renderer?.close(); pfd?.close()
                             pfd = ParcelFileDescriptor.open(File(b.path), ParcelFileDescriptor.MODE_READ_ONLY)
@@ -258,6 +329,7 @@ object Ocr {
                         }
                         val text = try { ocrPage(api, renderer!!, page - 1) } catch (e: Throwable) { null }
                         db.saveOcr(pageId, fileId, text?.let { Indexer.prepare(it) })
+                        Prefs.commit("ocrPage", 0L)
                         Progress.done++
                     }
                 } finally {
@@ -448,6 +520,7 @@ object Net {
 
 /** Runs the indexing in the background with a notification, so it continues when the screen is off. */
 class IndexService : Service() {
+    @Volatile private var again = false
     private var wake: PowerManager.WakeLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -469,8 +542,16 @@ class IndexService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(1, note("מתחיל…"))
-        if (Progress.running) return START_NOT_STICKY
+        Prefs.init(this) // the latest settings from the screens (folders, options)
+        intent?.getLongExtra("ocrFile", 0L)?.takeIf { it > 0 }?.let { Progress.ocrFile = it }
+        if (Progress.running) { again = intent != null; return START_STICKY }
         Progress.running = true
+        try { java.io.File(filesDir, "scan.cancel").delete() } catch (e: Throwable) {}
+        // the screens learn the state from a small file, every second
+        Thread {
+            while (Progress.running) { Progress.publish(this); try { Thread.sleep(1000) } catch (e: InterruptedException) { break } }
+            Progress.publish(this)
+        }.apply { isDaemon = true }.start()
         wake = (getSystemService(Context.POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "searchplus:index").apply {
             setReferenceCounted(false); acquire(16 * 3600 * 1000L)
         }
@@ -486,7 +567,7 @@ class IndexService : Service() {
         Thread {
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
             try {
-                Indexer.runAll(this)
+                do { again = false; Indexer.runAll(this) } while (again)
                 val one = Progress.ocrFile
                 if (one != null) { Progress.ocrFile = null; if (Ocr.ready(this)) Ocr.runPending(this, one) }
             } catch (e: Throwable) {
@@ -495,6 +576,7 @@ class IndexService : Service() {
                 Progress.running = false
                 Progress.phase = ""; Progress.current = ""; Progress.total = 0; Progress.done = 0
                 Progress.lastFinished = System.currentTimeMillis()
+                Progress.publish(this@IndexService)
                 try { wake?.release() } catch (e: Exception) {}
                 ui { stopForeground(true); stopSelf() }
             }

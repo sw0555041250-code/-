@@ -34,6 +34,13 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         ctx = this
+        val proc = try {
+            if (android.os.Build.VERSION.SDK_INT >= 28) Application.getProcessName()
+            else (getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager).runningAppProcesses
+                ?.firstOrNull { it.pid == android.os.Process.myPid() }?.processName ?: ""
+        } catch (e: Throwable) { "" }
+        Progress.inScan = proc.endsWith(":scan")
+        Prefs.scanSide = Progress.inScan
         Prefs.init(this)
         // if the app ever closes because of an error, keep the details and show them next time
         val prev = Thread.getDefaultUncaughtExceptionHandler()
@@ -49,6 +56,7 @@ class App : Application() {
             }
             prev?.uncaughtException(t, e)
         }
+        if (Progress.inScan) return
         watchMainThread()
         // recording was removed from the app: free the space its speech models took
         Thread { try { ModelStore.dropSpeechModels(this) } catch (e: Throwable) {} }.start()
@@ -91,15 +99,41 @@ class App : Application() {
     }
 }
 
+/**
+ * Settings. The scan runs in a second process; two processes writing the same settings file would
+ * overwrite each other's changes. So the scan process never writes the shared file: what it saves
+ * goes to small files of its own ("scanprefs/<key>"), which both processes read first.
+ */
 object Prefs {
     private lateinit var sp: SharedPreferences
-    fun init(c: Context) { sp = c.getSharedPreferences("searchplus", Context.MODE_PRIVATE) }
-    fun b(k: String, d: Boolean) = sp.getBoolean(k, d)
-    fun s(k: String, d: String) = sp.getString(k, d) ?: d
-    fun i(k: String, d: Int) = sp.getInt(k, d)
-    fun l(k: String, d: Long) = sp.getLong(k, d)
-    fun has(k: String) = sp.contains(k)
+    private lateinit var side: java.io.File
+    /** True in the scan process. */
+    @Volatile var scanSide = false
+    /** Keys the scan process writes that the screens must see (and reset when the user changes them). */
+    private val FROM_SCAN = setOf("semantic", "semError", "firstScanDone", "someRead")
+
+    @Suppress("DEPRECATION")
+    fun init(c: Context) {
+        // MULTI_PROCESS: re-read from disk when the other process changed the file
+        sp = c.getSharedPreferences("searchplus", if (scanSide) Context.MODE_MULTI_PROCESS else Context.MODE_PRIVATE)
+        side = java.io.File(c.filesDir, "scanprefs").apply { mkdirs() }
+    }
+
+    private fun sideGet(k: String): String? =
+        if (scanSide || k in FROM_SCAN) try { java.io.File(side, k).takeIf { it.exists() }?.readText() } catch (e: Throwable) { null } else null
+
+    fun b(k: String, d: Boolean) = sideGet(k)?.toBooleanStrictOrNull() ?: sp.getBoolean(k, d)
+    fun s(k: String, d: String) = sideGet(k) ?: (sp.getString(k, d) ?: d)
+    fun i(k: String, d: Int) = sideGet(k)?.toIntOrNull() ?: sp.getInt(k, d)
+    fun l(k: String, d: Long) = sideGet(k)?.toLongOrNull() ?: sp.getLong(k, d)
+    fun has(k: String) = (scanSide && java.io.File(side, k).exists()) || sp.contains(k)
     fun put(k: String, v: Any?) {
+        if (scanSide) {
+            try { val f = java.io.File(side, k); if (v == null) f.delete() else f.writeText(v.toString()) } catch (e: Throwable) {}
+            return
+        }
+        // the user's own choice replaces what the scan process wrote
+        if (k in FROM_SCAN) try { java.io.File(side, k).delete() } catch (e: Throwable) {}
         val e = sp.edit()
         when (v) {
             null -> e.remove(k)
@@ -112,7 +146,10 @@ object Prefs {
     }
     fun list(k: String): MutableList<String> = s(k, "").split('\n').filter { it.isNotBlank() }.toMutableList()
     /** Saved to disk right away (put() saves in the background) – for what must survive a sudden kill. */
-    fun commit(k: String, v: Long) { try { sp.edit().putLong(k, v).commit() } catch (e: Throwable) {} }
+    fun commit(k: String, v: Long) {
+        if (scanSide) { put(k, v); return }
+        try { sp.edit().putLong(k, v).commit() } catch (e: Throwable) {}
+    }
 
     fun putList(k: String, l: List<String>) = put(k, l.joinToString("\n"))
 }

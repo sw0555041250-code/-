@@ -75,8 +75,10 @@
         <activity android:name=".SettingsActivity" android:exported="false" />
         <activity android:name=".OrganizeActivity" android:exported="false" />
 
+        <!-- the scan runs in its own process: a damaged book or lack of memory never closes the screens -->
         <service
             android:name=".IndexService"
+            android:process=":scan"
             android:exported="false" />
 
         <provider

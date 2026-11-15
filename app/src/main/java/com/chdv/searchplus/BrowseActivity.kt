@@ -77,7 +77,7 @@ class BrowseActivity : BaseActivity() {
             items.add("קריאה מחדש של הספר (סריקה)" to { Indexer.reindex(this, b); toast("הספר נכנס לתור הסריקה") })
             if (b.emptyPages > 0) items.add("זיהוי טקסט (OCR) ל-${b.emptyPages} העמודים הסרוקים" to {
                 if (!Ocr.ready(this)) toast("קודם יש להוריד את רכיב ה-OCR בהגדרות")
-                else { Progress.ocrFile = b.id; Indexer.start(this); toast("זיהוי הטקסט התחיל ברקע") }
+                else { Indexer.start(this, b.id); toast("זיהוי הטקסט התחיל ברקע") }
             })
             items.add("מצב בסריקה" to {
                 val st = when (b.status) { St.DONE -> "נסרק ✓"; St.ERROR -> "שגיאה בקריאה"; else -> "ממתין לסריקה" }

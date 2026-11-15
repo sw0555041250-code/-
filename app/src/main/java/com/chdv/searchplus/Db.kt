@@ -88,6 +88,8 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "index.db", null,
 
     fun books(): Map<Long, Book> {
         val c = cache ?: return load()
+        // the scan writes from its own process: the screens refresh their list now and then
+        if (!Progress.inScan && System.currentTimeMillis() - loadedAt > 20_000 && !stale) { stale = true; Catalog.invalidate() }
         if (stale && !reloading && System.currentTimeMillis() - loadedAt > 8000) {
             reloading = true
             Thread { try { load() } catch (e: Throwable) {} finally { reloading = false } }.start()

@@ -603,7 +603,8 @@ class MainActivity : BaseActivity() {
         }
         try {
             val am = getSystemService(android.app.ActivityManager::class.java)
-            val e = am.getHistoricalProcessExitReasons(packageName, 0, 1).firstOrNull() ?: return
+            // only the screens' process (the scan has its own process, and recovers by itself)
+            val e = am.getHistoricalProcessExitReasons(packageName, 0, 8).firstOrNull { it.processName == packageName } ?: return
             if (e.timestamp <= Prefs.l("lastExitSeen", 0L)) return
             Prefs.put("lastExitSeen", e.timestamp)
             val r = e.reason
@@ -631,7 +632,7 @@ class MainActivity : BaseActivity() {
             val freeze = try { File(filesDir, "freeze.txt").takeIf { it.exists() }?.readText()?.take(1500) } catch (x: Throwable) { null }
             File(filesDir, "freeze.txt").delete()
             // how much memory the app held when it was closed, and what the scan was reading
-            val mem = "זיכרון: ${e.pss / 1024}MB" + (Prefs.l("scanFile", 0L).takeIf { it > 0 }?.let { id -> Db.get().book(id)?.let { " · קרא את: ${it.title} (${it.size / 1048576}MB) – הספר הזה ידולג" } } ?: "")
+            val mem = "זיכרון: ${e.pss / 1024}MB"
             val details = "$why\n(${e.reason}/${e.status} ${e.description ?: ""}) גרסה ${packageManager.getPackageInfo(packageName, 0).versionName}\n$mem" +
                 (trace?.let { "\n\n$it" } ?: "") + (anr?.takeIf { it.isNotBlank() }?.let { "\n\n$it" } ?: "") +
                 (if (anr.isNullOrBlank()) freeze?.let { "\n\n$it" } ?: "" else "")
