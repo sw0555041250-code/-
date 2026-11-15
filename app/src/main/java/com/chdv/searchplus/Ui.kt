@@ -116,7 +116,7 @@ object Prefs {
     /** True in the scan process. */
     @Volatile var scanSide = false
     /** Keys the scan process writes that the screens must see (and reset when the user changes them). */
-    private val FROM_SCAN = setOf("semantic", "semError", "firstScanDone", "someRead")
+    private val FROM_SCAN = setOf("semantic", "semError", "firstScanDone", "someRead", "lastKilled")
 
     @Suppress("DEPRECATION")
     fun init(c: Context) {

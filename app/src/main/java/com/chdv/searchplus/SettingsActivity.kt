@@ -60,13 +60,14 @@ class SettingsActivity : BaseActivity() {
                     (if (Progress.running) "\n⟳ " + Progress.text() else "")
             }
         }
-        item("סריקה עכשיו", "מחפש ספרים חדשים, שהשתנו או שנמחקו") { Indexer.start(this); toast("הסריקה התחילה") }
-        if (Progress.running) item("עצירת הסריקה", "") { Progress.cancel = true; toast("עוצר…") }
+        item("סריקה עכשיו", "מחפש ספרים חדשים, שהשתנו או שנמחקו") { Indexer.start(this, user = true); toast("הסריקה התחילה") }
+        if (Progress.running) item("עצירת הסריקה", "") { Indexer.stopByUser(); toast("עוצר…") }
+        if (!Indexer.backgroundAllowed(this)) item("⚠ לאשר לסריקה לרוץ ברקע", "בלי זה המכשיר עוצר את הסריקה כדי לחסוך בסוללה") { Indexer.askBackground(this) }
         toggle("סריקה אוטומטית בפתיחת התוכנה", "בכל פתיחה בודק אם נוספו ספרים", "autoScan", true)
         item("סריקה מחדש של כל הספרים", "מוחק את האינדקס וקורא הכול מההתחלה") {
             Sheet.confirm(this, "סריקה מחדש של הכול", "האינדקס יימחק וכל הספרים ייקראו מחדש. זה יכול לקחת זמן רב.", "כן, לסרוק מחדש") {
                 Progress.cancel = true
-                bg.execute { Db.get().resetAll(); ui { Indexer.start(this) } }
+                bg.execute { Db.get().resetAll(); ui { Indexer.start(this, user = true) } }
             }
         }
         toggle("סדר טקסט לפי מיקום בעמוד", "לספרים שהטקסט שלהם יוצא מבולגן. משפיע על סריקה חדשה", "sortByPosition", false)
@@ -97,7 +98,7 @@ class SettingsActivity : BaseActivity() {
             (if (Progress.running) "\n⟳ " + Progress.text() else "")) {
             Prefs.put("semantic", true)
             Sheet.info(this, "בונים את אינדקס המשמעות", "הבנייה רצה ברקע ומציגה כמה זמן נשאר.\n\n• חברו את המכשיר לטעינה.\n• ב-BOOX: הגדרות › אפליקציות › ניהול אפליקציות › חיפוש פלוס – כבו \"הקפאה\" / אפשרו ריצה ברקע, כדי שהמכשיר לא יעצור את העבודה בלילה.\n• אפשר להמשיך לחפש בזמן הבנייה.")
-            Indexer.start(this)
+            Indexer.start(this, user = true)
         }
         val dReady = Semantic.Deep.ready(this)
         item(if (dReady) "🧠 מודל ההבנה העמוק מותקן ✓" else "🧠 מודל הבנה עמוק – תשובות מדויקות יותר (כ-570MB)",
@@ -117,7 +118,7 @@ class SettingsActivity : BaseActivity() {
             ))
         }
         toggle("בניית אינדקס משמעות ברקע", "כבוי = החיפוש לפי משמעות מבוטל ולא נבנה אינדקס", "semantic", false) { on ->
-            if (on && Semantic.ready(this)) Indexer.start(this)
+            if (on && Semantic.ready(this)) Indexer.start(this, user = true)
         }
         val semRoots = Prefs.list("semanticRoots")
         item("תיקיות לאינדקס המשמעות", if (semRoots.isEmpty()) "כל הספרים (מומלץ לבחור תיקיות חשובות – כך זה מהיר יותר)" else semRoots.joinToString("\n")) {
@@ -184,14 +185,27 @@ class SettingsActivity : BaseActivity() {
     private fun rootsMenu() {
         val roots = Library.roots()
         val items = ArrayList<Pair<String, () -> Unit>>()
-        items.add("הוספת תיקייה" to { FolderPicker.pick(this) { d -> Library.setRoots(Library.roots() + d); render(); Indexer.start(this) } })
+        items.add("הוספת תיקייה" to { FolderPicker.pick(this) { d -> Library.setRoots(Library.roots() + d); render(); Indexer.start(this, user = true) } })
         roots.forEach { r -> items.add("הסרה: $r" to {
             Sheet.confirm(this, "הסרת תיקייה", "הספרים שבתיקייה $r יוסרו מהאינדקס (הקבצים עצמם לא יימחקו).", "הסרה") {
-                Library.setRoots(Library.roots() - r); render(); Indexer.start(this)
+                Library.setRoots(Library.roots() - r); render(); Indexer.start(this, user = true)
             }
         }) }
         Sheet.actions(this, "תיקיות הספרים", items)
     }
+
+    /** Why the scan stopped lately (Android keeps the reason for every process). */
+    private fun scanStops(): String = try {
+        val am = getSystemService(android.app.ActivityManager::class.java)
+        val stops = am.getHistoricalProcessExitReasons(packageName, 0, 30).filter { it.processName.endsWith(":scan") }.take(6)
+        val names = mapOf(1 to "סיימה", 2 to "נעצרה בכוח (כנראה חיסכון בסוללה)", 3 to "נגמר הזיכרון", 4 to "שגיאה", 5 to "שגיאה בקריאת קובץ",
+            6 to "לא הגיבה", 9 to "שימוש רב מדי במשאבים", 10 to "נעצרה בבקשה", 11 to "נעצרה על ידי המשתמש", 13 to "המכשיר עצר אותה")
+        val fmt = java.text.SimpleDateFormat("HH:mm", java.util.Locale.US)
+        (if (stops.isEmpty()) "" else "\n\nהפעמים האחרונות שהסריקה נעצרה:\n" + stops.joinToString("\n") {
+            "• ${fmt.format(java.util.Date(it.timestamp))} – ${names[it.reason] ?: "סיבה ${it.reason}"} · זיכרון ${it.pss / 1024}MB"
+        }) + Prefs.s("lastKilled", "").let { if (it.isEmpty()) "" else "\nהספר האחרון שדולג: $it" } +
+            (if (!Indexer.backgroundAllowed(this)) "\n\n⚠ הסריקה עוד לא מורשית לרוץ ברקע – אפשר לאשר בהגדרות." else "")
+    } catch (e: Throwable) { "" }
 
     private fun statsSheet() {
         bg.execute {
@@ -201,7 +215,7 @@ class SettingsActivity : BaseActivity() {
                 Sheet.info(this, "מצב הסריקה",
                     "ספרים: ${st.books}\nנסרקו: ${st.done}\nממתינים: ${st.pending}\nשגיאות: ${st.errors}\nעמודים: ${st.pages}\n" +
                         "עמודים עם טקסט: ${st.textPages}\nעמודים סרוקים שממתינים ל-OCR: ${st.emptyPages}\nספרים באינדקס המשמעות: ${st.embedded}" +
-                        (if (Progress.running) "\n\nעכשיו: " + Progress.text() else "") +
+                        (if (Progress.running) "\n\nעכשיו: " + Progress.text() else "") + scanStops() +
                         (if (errs.isNotEmpty()) "\n\nקבצים שלא נקראו:\n" + errs.joinToString("\n") { "• ${it.first}" } else ""))
             }
         }
@@ -215,7 +229,7 @@ class SettingsActivity : BaseActivity() {
             bg.execute {
                 try {
                     Ocr.download(this, best) { p -> ui { s.text = "מוריד את רכיב ה-OCR… $p%" } }
-                    ui { d.dismiss(); toast("הותקן ✓"); render(); Indexer.start(this) }
+                    ui { d.dismiss(); toast("הותקן ✓"); render(); Indexer.start(this, user = true) }
                 } catch (e: Exception) {
                     ui { d.dismiss(); Sheet.info(this, "ההורדה נכשלה", "בדקו את החיבור לאינטרנט ונסו שוב.\n" + (e.message ?: "")) }
                 }
@@ -240,7 +254,7 @@ class SettingsActivity : BaseActivity() {
                     try {
                         Semantic.download(this) { t -> ui { s.text = t } }
                         Prefs.put("semantic", true)
-                        ui { d.dismiss(); toast("הותקן ✓"); render(); Indexer.start(this) }
+                        ui { d.dismiss(); toast("הותקן ✓"); render(); Indexer.start(this, user = true) }
                     } catch (e: Throwable) {
                         ui { d.dismiss(); Sheet.info(this, "ההורדה נכשלה", "בדקו את החיבור לאינטרנט ואת המקום הפנוי ונסו שוב.\n" + (e.message ?: "")) }
                     }
@@ -250,7 +264,7 @@ class SettingsActivity : BaseActivity() {
         }
         Sheet.actions(this, "מודל המשמעות", listOf(
             "בניית האינדקס מחדש" to {
-                Semantic.vectorsFile(this).delete(); Db.get().resetEmbeddings(); Indexer.start(this); render()
+                Semantic.vectorsFile(this).delete(); Db.get().resetEmbeddings(); Indexer.start(this, user = true); render()
             },
             "מחיקת המודל והאינדקס (ביטול החיפוש לפי משמעות)" to {
                 Sheet.confirm(this, "מחיקה", "המודל והאינדקס יימחקו. אפשר להוריד שוב בכל עת.", "מחיקה") {

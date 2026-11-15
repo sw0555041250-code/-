@@ -197,7 +197,7 @@ object DriveSync {
             ui {
                 dlg.dismiss()
                 if (Library.roots().none { dir.absolutePath == it || dir.absolutePath.startsWith("$it/") }) Library.setRoots(Library.roots() + dir.absolutePath)
-                Indexer.start(a)
+                Indexer.start(a, user = true)
                 done()
                 Sheet.info(a, "הספרים מה-Drive הובאו ✓", "ירדו $ok ספרים" + (if (skip > 0) " · $skip כבר היו" else "") + (if (fail > 0) " · $fail לא ירדו" else "") +
                     ".\n\nהם בתיקיות כמו ב-Drive, נכנסו למאגר ונסרקים עכשיו ברקע. לסנכרון ספרים חדשים – לוחצים שוב \"חיבור ל-Google Drive\".")

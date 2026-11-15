@@ -164,9 +164,17 @@ class MainActivity : BaseActivity() {
                 status.visibility = View.VISIBLE
                 status.text = "⟳ $t"
             }
+            // the scan stopped by itself (the device closed it) before the library was read: start it again
+            val now = System.currentTimeMillis()
+            if (!Progress.running && !Prefs.b("firstScanDone", false) && !Prefs.b("scanStoppedByUser", false) &&
+                now - lastRestart > 60_000 && Library.hasAccess(this@MainActivity) && Library.roots().isNotEmpty()) {
+                lastRestart = now
+                Indexer.start(this@MainActivity)
+            }
             App.main.postDelayed(this, 2000)
         }
     }
+    private var lastRestart = System.currentTimeMillis()
 
     // ---------------- layout ----------------
 
@@ -359,9 +367,18 @@ class MainActivity : BaseActivity() {
                     FolderPicker.pick(this) { dir ->
                         Library.setRoots(listOf(dir))
                         refreshSetup()
-                        Indexer.start(this)
+                        Indexer.start(this, user = true)
                         Sheet.info(this, "מתחילים לסרוק", "הסריקה רצה ברקע ואפשר כבר לחפש בספרים שנסרקו. בפעם הראשונה זה לוקח זמן – תלוי בכמות הספרים. אפשר לסגור את התוכנה; הסריקה ממשיכה.")
                     }
+                }, lp(MATCH, WRAP))
+            }
+            !Indexer.backgroundAllowed(this) && !Prefs.b("firstScanDone", false) && !Prefs.b("bgAsked", false) -> {
+                card.addView(label("שלב 3: לתת לסריקה לרוץ ברקע", 17f, Col.TEXT, true))
+                card.addView(label("בלי זה המכשיר עוצר את קריאת הספרים כדי לחסוך בסוללה. במסך שייפתח – לאשר.\nב-BOOX: אם הסריקה עדיין נעצרת – בהגדרות של ה-BOOX, בניהול האפליקציות, לוודא שחיפוש פלוס לא מוקפא ברקע.", 14.5f, Col.SUB).apply { setPadding(0, dp(4), 0, dp(10)) })
+                card.addView(pill("לאשר עבודה ברקע") { Indexer.askBackground(this); refreshSetup() }, lp(MATCH, WRAP))
+                card.addView(label("לא עכשיו", 14f, Col.SUB).apply {
+                    gravity = Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER; setPadding(0, dp(10), 0, 0)
+                    setOnClickListener { Prefs.put("bgAsked", true); refreshSetup() }
                 }, lp(MATCH, WRAP))
             }
             else -> return
@@ -371,7 +388,7 @@ class MainActivity : BaseActivity() {
 
     private fun progressSheet() {
         Sheet.confirm(this, "סריקת הספרים", Progress.text() + "\n\nהסריקה רצה ברקע. אפשר להמשיך לחפש בינתיים בספרים שכבר נסרקו.", "עצירת הסריקה") {
-            Progress.cancel = true
+            Indexer.stopByUser()
         }
     }
 
@@ -594,7 +611,7 @@ class MainActivity : BaseActivity() {
             Prefs.put("semantic", false)
             Semantic.lastError = "בניית אינדקס המשמעות נעצרה כי המכשיר סגר את התוכנה. אפשר להפעיל שוב מההגדרות (מומלץ בטעינה, בלילה)."
             Sheet.confirm(this, "אינדקס המשמעות נעצר", "בזמן בניית אינדקס המשמעות המכשיר סגר את התוכנה (כנראה חוסר זיכרון). כדי שזה לא יחזור – הבנייה הופסקה.\n\nהחיפוש לפי משמעות עדיין עובד על העמודים שמכילים את מילות השאלה.", "לנסות שוב עכשיו") {
-                Prefs.put("semantic", true); Indexer.start(this)
+                Prefs.put("semantic", true); Indexer.start(this, user = true)
             }
             return
         }

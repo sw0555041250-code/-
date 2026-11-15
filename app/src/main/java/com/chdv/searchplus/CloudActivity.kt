@@ -151,7 +151,7 @@ class CloudActivity : BaseActivity() {
             ui {
                 d.dismiss()
                 if (Library.roots().none { dir.absolutePath == it || dir.absolutePath.startsWith("$it/") }) Library.setRoots(Library.roots() + dir.absolutePath)
-                Indexer.start(this)
+                Indexer.start(this, user = true)
                 refresh()
                 Sheet.info(this, "הספרים הובאו ✓", "הובאו $ok ספרים" + (if (skip > 0) " · $skip כבר היו" else "") + (if (fail > 0) " · $fail לא ירדו (בדקו אינטרנט)" else "") +
                     ".\n\nהם נכנסו למאגר ונסרקים עכשיו ברקע – אפשר לחפש בהם בעוד רגע.")

@@ -178,8 +178,26 @@ object Indexer {
         return t
     }
 
-    fun start(c: Context, ocrFile: Long = 0L) {
+    /** Can the scan keep running in the background (not cut by battery saving)? */
+    fun backgroundAllowed(c: Context): Boolean = try {
+        (c.getSystemService(Context.POWER_SERVICE) as PowerManager).isIgnoringBatteryOptimizations(c.packageName)
+    } catch (e: Throwable) { true }
+
+    fun askBackground(a: android.app.Activity) {
+        Prefs.put("bgAsked", true)
+        @Suppress("BatteryLife")
+        val i = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:" + a.packageName))
+        if (!a.safeStart(i)) a.safeStart(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+    }
+
+    /** The user stopped the scan: it is not started again by itself until they start it. */
+    fun stopByUser() { Progress.cancel = true; Prefs.put("scanStoppedByUser", true) }
+
+    /** [user] = started by the user's own action (also after they stopped it). */
+    fun start(c: Context, ocrFile: Long = 0L, user: Boolean = false) {
         if (!Library.hasAccess(c) || Library.roots().isEmpty()) return
+        if (user || ocrFile > 0) Prefs.put("scanStoppedByUser", false)
+        else if (Prefs.b("scanStoppedByUser", false)) return
         val i = Intent(c, IndexService::class.java)
         if (ocrFile > 0) i.putExtra("ocrFile", ocrFile)
         if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i) else c.startService(i)
@@ -211,6 +229,7 @@ object Indexer {
         // the scan is not stopped by the same book again and again (it can be read later from its menu)
         Prefs.l("scanFile", 0L).takeIf { it > 0 }?.let { bad ->
             db.markError(bad, "כבד מדי למכשיר – המכשיר סגר את התוכנה בזמן הקריאה שלו")
+            db.book(bad)?.let { Prefs.put("lastKilled", it.title + " (" + it.size / 1048576 + "MB)") }
             Prefs.commit("scanFile", 0L)
         }
 
@@ -267,7 +286,7 @@ object Indexer {
     fun reindex(c: Context, b: Book) {
         val f = File(b.path)
         Db.get().markChanged(b.id, f)
-        start(c)
+        start(c, user = true)
     }
 }
 
