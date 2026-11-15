@@ -132,10 +132,10 @@ class SettingsActivity : BaseActivity() {
         val rp = Prefs.s("readerPkg", "")
         item("באיזו אפליקציה לפתוח ספרים", if (ow == "internal") "הקורא המובנה – בעמוד הנכון עם סימון המילים"
             else (if (rp.isEmpty()) "אפליקציה אחרת – תישאלו פעם אחת באיזו" else Library.appName(this, rp)) + " · נפתח בעמוד, והמילים מועתקות לחיפוש") {
-            val apps = Library.pdfApps(this)
+            val apps = Library.readers(this)
             val opts = ArrayList<Pair<String, String>>()
             opts.add("internal" to "קורא מובנה – עמוד מדויק + סימון המילים (מומלץ)")
-            apps.forEach { r -> opts.add("app:${r.activityInfo.packageName}/${r.activityInfo.name}" to r.loadLabel(packageManager).toString()) }
+            apps.forEach { r -> opts.add("app:${r.pkg}/${r.cls}" to r.label) }
             if (!Library.readEraInstalled(this)) opts.add("install-readera" to "⬇ ReadEra – לא מותקן במכשיר. לחיצה להתקנה")
             val cur = if (ow == "internal") "internal" else "app:$rp/${Prefs.s("readerCls", "")}"
             Sheet.choice(this, "ברירת מחדל לפתיחת ספרים", opts, cur) { k ->

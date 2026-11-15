@@ -145,6 +145,39 @@ object Library {
         return seen.values.sortedWith(compareBy<android.content.pm.ResolveInfo> { rank(it) }.thenBy { it.loadLabel(pm).toString() })
     }
 
+    /** A reader to open books with. [cls] empty = the system picks the activity inside the app. */
+    class Reader(val pkg: String, val cls: String, val label: String)
+
+    /**
+     * Every app that can open the books, ReadEra first. Some readers (ReadEra on BOOX) don't answer
+     * the system's question "who opens PDF?" – they are added when they are installed.
+     */
+    fun readers(c: Context): List<Reader> {
+        val pm = c.packageManager
+        val out = LinkedHashMap<String, Reader>()
+        val installed = try { pm.getInstalledApplications(0) } catch (e: Exception) { emptyList() }
+        // ReadEra in any edition (by its package or its name)
+        installed.filter { it.packageName.startsWith("org.readera") || pm.getApplicationLabel(it).toString().contains("ReadEra", true) }
+            .forEach { out[it.packageName] = Reader(it.packageName, "", pm.getApplicationLabel(it).toString()) }
+        for (r in pdfApps(c)) {
+            val p = r.activityInfo.packageName
+            out[p] = Reader(p, r.activityInfo.name, r.loadLabel(pm).toString())
+        }
+        val have = installed.map { it.packageName }.toSet()
+        for (p in READERS) if (p in have && p !in out) out[p] = Reader(p, "", appName(c, p))
+        val rank = { r: Reader -> if (r.pkg.startsWith("org.readera")) -1 else READERS.indexOf(r.pkg).let { if (it < 0) 99 else it } }
+        return out.values.sortedWith(compareBy<Reader> { rank(it) }.thenBy { it.label })
+    }
+
+    /** Opens [i] (a VIEW of a book) in that app: its activity, or the app's own choice, or its main screen. */
+    fun startIn(a: Activity, i: Intent, pkg: String, cls: String): Boolean {
+        i.data?.let { a.grantUriPermission(pkg, it, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        if (cls.isNotEmpty() && a.safeStart(Intent(i).setClassName(pkg, cls))) return true
+        if (a.safeStart(Intent(i).setPackage(pkg))) return true
+        val launch = a.packageManager.getLaunchIntentForPackage(pkg) ?: return false
+        return a.safeStart(Intent(i).setComponent(launch.component))
+    }
+
     fun appName(c: Context, pkg: String): String = try {
         c.packageManager.getApplicationLabel(c.packageManager.getApplicationInfo(pkg, 0)).toString()
     } catch (e: Exception) { pkg }
@@ -160,11 +193,11 @@ object Library {
             Prefs.put("openWith", "internal"); Prefs.put("readerChosen", true); then()
         })
         if (!readEraInstalled(a)) items.add("⬇ ReadEra – לא מותקן במכשיר. להתקנה" to { installReadEra(a) })
-        for (r in pdfApps(a)) {
-            items.add(r.loadLabel(pm).toString() to {
-                Prefs.put("openWith", "external"); Prefs.put("readerPkg", r.activityInfo.packageName); Prefs.put("readerCls", r.activityInfo.name)
+        for (r in readers(a)) {
+            items.add(r.label to {
+                Prefs.put("openWith", "external"); Prefs.put("readerPkg", r.pkg); Prefs.put("readerCls", r.cls)
                 Prefs.put("readerChosen", true)
-                a.toast("מעכשיו ספרים ייפתחו ב-${r.loadLabel(pm)}. אפשר לשנות בהגדרות")
+                a.toast("מעכשיו ספרים ייפתחו ב-${r.label}. אפשר לשנות בהגדרות")
                 then()
             })
         }
@@ -206,23 +239,19 @@ object Library {
         }
         val pkg = Prefs.s("readerPkg", ""); val cls = Prefs.s("readerCls", "")
         if (!chooser && pkg.isNotEmpty()) {
-            val direct = Intent(i).setClassName(pkg, cls)
-            a.grantUriPermission(pkg, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            if (a.safeStart(direct)) return
+            if (startIn(a, i, pkg, cls)) return
             // the chosen app was removed: ask again
             Prefs.put("readerPkg", ""); Prefs.put("readerCls", "")
         }
-        val apps = pdfApps(a)
+        val apps = readers(a)
         if (apps.isEmpty()) { if (!a.safeStart(Intent.createChooser(i, "פתיחה באמצעות"))) a.toast("לא נמצאה אפליקציה לפתיחת PDF"); return }
-        val pm = a.packageManager
         Sheet.actions(a, if (chooser) "פתיחה באמצעות" else "באיזו אפליקציה לפתוח? (הבחירה תישמר – אפשר לשנות בהגדרות)", apps.map { r ->
-            r.loadLabel(pm).toString() to {
+            r.label to {
                 if (!chooser) {
-                    Prefs.put("readerPkg", r.activityInfo.packageName); Prefs.put("readerCls", r.activityInfo.name)
-                    a.toast("מעכשיו ספרים ייפתחו ב-${r.loadLabel(pm)}. אפשר לשנות בהגדרות")
+                    Prefs.put("readerPkg", r.pkg); Prefs.put("readerCls", r.cls)
+                    a.toast("מעכשיו ספרים ייפתחו ב-${r.label}. אפשר לשנות בהגדרות")
                 }
-                a.grantUriPermission(r.activityInfo.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                if (!a.safeStart(Intent(i).setClassName(r.activityInfo.packageName, r.activityInfo.name))) a.toast("לא ניתן לפתוח")
+                if (!startIn(a, i, r.pkg, r.cls)) a.toast("לא ניתן לפתוח")
             }
         } + (if (readEraInstalled(a)) emptyList() else listOf("⬇ ReadEra – לא מותקן במכשיר. להתקנה" to { installReadEra(a) })) +
             listOf("עוד אפליקציות… (הרשימה של המכשיר)" to {
