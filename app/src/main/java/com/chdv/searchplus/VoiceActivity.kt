@@ -111,7 +111,12 @@ class VoiceActivity : BaseActivity() {
         "זיהוי בתוך המכשיר – בלי אינטרנט" + if (!VoiceModels.ready(this)) " (צריך להוריד פעם אחת)" else ""
 
     private fun listen() {
-        VoiceSearch.start(this) { t -> heard.setText(t); handle(t, true) }
+        VoiceSearch.start(this) { t ->
+            heard.setText(t); heard.setSelection(heard.text.length)
+            // "transcribe only": the words are written in the box, the search waits for the user
+            if (Prefs.b("voiceSearchAuto", true)) handle(t, true)
+            else { understood.text = "✍ נכתב. אפשר לתקן, ואז \"${if (typing) "לפתוח" else "חיפוש"}\""; heard.requestFocus() }
+        }
     }
 
     override fun onResume() { super.onResume(); status.text = engineNote() }
@@ -132,9 +137,14 @@ class VoiceActivity : BaseActivity() {
         exec.execute {
             val ref = try { RefParser.parse(text) } catch (e: Throwable) { null }
             val noDaf = ref != null && ref.kind == Ref.Kind.GEMARA && ref.daf == null
-            val targets = if (ref != null && !noDaf) try { Jump.resolve(ref, text) } catch (e: Throwable) { emptyList() } else emptyList()
+            // a newer request (typing on) makes this one stale: stop at once, don't block the next
+            if (my != token) return@execute
+            val stale = { my != token }
+            val targets = if (ref != null && !noDaf) try { Jump.resolve(ref, text, stale) } catch (e: Throwable) { emptyList() } else emptyList()
+            if (stale()) return@execute
             // no place in a book – maybe the name of a book or a folder (as they are on the device)
-            val named = if (ref == null) try { Catalog.find(text).filter { it.covered == it.of } } catch (e: Throwable) { emptyList() } else emptyList()
+            val named = if (ref == null) try { Catalog.find(text, null, 8).filter { it.score >= 5f } } catch (e: Throwable) { emptyList() } else emptyList()
+            if (stale()) return@execute
             // not a place in a book (or no such book): the books that contain the words
             val words = if (targets.isEmpty()) try {
                 Search.run(text, Match.ALL, true).takeIf { it.books.isNotEmpty() } ?: Search.run(text, Match.ANY, true)

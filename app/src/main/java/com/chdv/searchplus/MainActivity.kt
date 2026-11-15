@@ -83,6 +83,7 @@ class MainActivity : BaseActivity() {
         semantic = Prefs.b("lastSemantic", false)
         build()
         applyScreen(intent)
+        Catalog.warm()
     }
 
     /** Which screen this is: home, "meaning" (question & answer only) or "words" (word search only). */
