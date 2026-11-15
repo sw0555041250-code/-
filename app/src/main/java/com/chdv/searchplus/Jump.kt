@@ -45,6 +45,13 @@ object Jump {
     /** [progress] gets a message and how far along it is (0–100). */
     fun resolve(ref: Ref, raw: String? = null, stale: () -> Boolean = { false }, progress: (String, Int) -> Unit = { _, _ -> }): List<Target> {
         val request = raw ?: (listOf(ref.work) + ref.extra).joinToString(" ")
+        // "שיחה לפרשת נח" without a volume: every volume of the sichos where that parsha appears
+        if (ref.kind == Ref.Kind.SICHOS && ref.volume == null && ref.parsha != null && ref.page == null) {
+            val vols = Catalog.find(request, ref, 60)
+            progress("📚 מחפש את פרשת ${ref.parsha} ב-${vols.size} כרכים…", 40)
+            val found = parshaPages(vols.map { it.book }, ref.parsha!!)
+            if (found.isNotEmpty()) return found.map { (b, p) -> Target(b, p, true, ref, null) }
+        }
         val manyVolumes = ref.siman != null || ref.chapter != null
         progress("🔎 מחפש בשמות ${Db.get().books().size} הספרים…", 15)
         val cands = Catalog.find(request, ref, if (manyVolumes) 10 else 6)
@@ -65,6 +72,43 @@ object Jump {
 
 
     private fun HebNum0(w: String) = com.chdv.searchplus.core.HebNum.gematria(w) == null || w.length > 3
+
+    /** The first page of a parsha in each book (from the scanned text – one quick query for all of them). */
+    private fun parshaPages(books: List<Book>, parsha: String): List<Pair<Book, Int>> {
+        if (books.isEmpty()) return emptyList()
+        val words = RefParser.normalize(parsha).split(' ')
+        val byId = books.associateBy { it.id }
+        val first = HashMap<Long, Int>()
+        try {
+            val expr = words.joinToString(" ")
+            Db.get().readableDatabase.rawQuery(
+                "SELECT p.file, p.page, f.body FROM fts f JOIN pages p ON p.id = f.docid WHERE f MATCH ? AND p.file IN (${books.joinToString(",") { it.id.toString() }}) ORDER BY p.file, p.page",
+                arrayOf(if (words.size > 1) "\"$expr\"" else expr)).use { c ->
+                while (c.moveToNext()) {
+                    val fid = c.getLong(0)
+                    if (fid in first) continue
+                    if (PageFinder.headerHas(c.getString(2), words)) first[fid] = c.getInt(1)
+                }
+            }
+        } catch (e: Exception) {}
+        return first.entries.mapNotNull { (id, p) -> byId[id]?.let { it to p } }
+            .sortedBy { PageFinder.volumeOf(it.first.title) ?: 999 }
+    }
+
+    /**
+     * A book named in the request, and more words: those words inside that book ("תניא אהבת ישראל").
+     * Returns the book, the first page where all the words are, and the words to mark.
+     */
+    fun inside(books: List<Book>, words: List<String>): List<Triple<Book, Int, List<String>>> {
+        if (books.isEmpty() || words.isEmpty()) return emptyList()
+        val out = ArrayList<Triple<Book, Int, List<String>>>()
+        for (b in books.take(6)) {
+            val r = try { Search.run(words.joinToString(" "), Match.ALL, true, b.id) } catch (e: Exception) { null } ?: continue
+            val pages = r.books.firstOrNull()?.pages ?: continue
+            if (pages.isNotEmpty()) out.add(Triple(b, pages.first().page, r.terms))
+        }
+        return out
+    }
 
     private fun needsPages(ref: Ref) = ref.parsha != null || ref.page != null || ref.siman != null || ref.chapter != null || ref.daf != null
 

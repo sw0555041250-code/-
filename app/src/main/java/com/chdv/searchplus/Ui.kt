@@ -141,7 +141,15 @@ fun scale(): Float = when (Prefs.s("fontSize", "normal")) {
 
 fun Context.dp(v: Number): Int = (v.toFloat() * resources.displayMetrics.density + 0.5f).toInt()
 fun Context.toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
-fun ui(r: () -> Unit) = App.main.post(r)
+/** Run on the screen thread. An error inside is written to crash.txt instead of closing the app. */
+fun ui(r: () -> Unit) = App.main.post {
+    try { r() } catch (e: Throwable) {
+        try {
+            val sw = java.io.StringWriter(); e.printStackTrace(java.io.PrintWriter(sw))
+            java.io.File(App.ctx.filesDir, "errors.txt").appendText("${java.util.Date()}\n$sw\n".take(6000))
+        } catch (x: Throwable) {}
+    }
+}
 
 fun roundBg(color: Int, radius: Float, stroke: Int = 0, strokeColor: Int = 0): GradientDrawable =
     GradientDrawable().apply {
@@ -267,7 +275,15 @@ open class BaseActivity : AppCompatActivity() {
 /** Dialog helpers (bottom sheets in the app's style). */
 object Sheet {
     fun make(ctx: Context, content: View): Dialog {
-        val d = Dialog(ctx)
+        // a window opened after its screen was closed crashes Android: such a window is simply not shown
+        val d = object : Dialog(ctx) {
+            override fun show() {
+                val a = ctx as? Activity
+                if (a != null && (a.isFinishing || a.isDestroyed)) return
+                try { super.show() } catch (e: Exception) {}
+            }
+            override fun dismiss() { try { super.dismiss() } catch (e: Exception) {} }
+        }
         d.requestWindowFeature(Window.FEATURE_NO_TITLE)
         val wrap = FrameLayout(ctx).apply { setPadding(ctx.dp(12), ctx.dp(12), ctx.dp(12), ctx.dp(12)) }
         content.layoutDirection = View.LAYOUT_DIRECTION_RTL

@@ -36,17 +36,18 @@ object Updater {
         if (!silent) a.toast("בודק אם יש עדכון…")
         Thread {
             try {
-                val body = Net.text(API)
-                val tag = Regex("\"tag_name\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1) ?: ""
-                val apk = Regex("\"browser_download_url\"\\s*:\\s*\"([^\"]+\\.apk)\"").find(body)?.groupValues?.get(1)
-                val notes = Regex("\"body\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"").find(body)?.groupValues?.get(1)
-                    ?.replace("\\r\\n", "\n")?.replace("\\n", "\n")?.replace("\\\"", "\"")?.take(600) ?: ""
+                val js = org.json.JSONObject(Net.text(API))
+                val tag = js.optString("tag_name")
+                val assets = js.optJSONArray("assets")
+                val apk = (0 until (assets?.length() ?: 0)).map { assets!!.getJSONObject(it).optString("browser_download_url") }.firstOrNull { it.endsWith(".apk") }
+                // "what's new" in Hebrew, written for every version (docs/whatsnew.md)
+                val notes = js.optString("body").replace("\r\n", "\n").trim().take(2500)
                 val loc = local(a)
                 ui {
                     busy = false
                     if (build(tag) > build(loc) && apk != null) {
                         Sheet.confirm(a, "יש עדכון לחיפוש פלוס",
-                            "גרסה חדשה: ${tag.removePrefix("v")}\nהגרסה שלך: $loc\n\n$notes\n\nהאינדקס וההגדרות נשמרים.", "הורדה והתקנה") { download(a, apk) }
+                            "גרסה חדשה: ${tag.removePrefix("v")} (שלך: $loc)\n\n$notes", "הורדה והתקנה") { download(a, apk) }
                     } else if (!silent) Sheet.info(a, "אין עדכון חדש", "הגרסה שלך ($loc) היא העדכנית ביותר.")
                 }
             } catch (e: Exception) {

@@ -624,7 +624,13 @@ class MainActivity : BaseActivity() {
                 android.app.ApplicationExitInfo.REASON_ANR -> "התוכנה לא הגיבה זמן רב"
                 else -> "שגיאה בתוכנה"
             }
-            val details = "$why\n(${e.reason}/${e.status} ${e.description ?: ""}) גרסה ${packageManager.getPackageInfo(packageName, 0).versionName}"
+            // the error itself (saved by the app's error handler), so the cause can be found
+            val trace = try { File(filesDir, "crash.txt").takeIf { it.exists() }?.readText()?.let { t ->
+                t.lines().filter { it.isNotBlank() }.let { l -> (l.take(2) + l.filter { "searchplus" in it }.take(6)).distinct().joinToString("\n") }
+            } } catch (x: Exception) { null }
+            File(filesDir, "crash.txt").delete()
+            val details = "$why\n(${e.reason}/${e.status} ${e.description ?: ""}) גרסה ${packageManager.getPackageInfo(packageName, 0).versionName}" +
+                (trace?.let { "\n\n$it" } ?: "")
             if (busy > 0 && e.timestamp >= busy) voiceCrashSheet(details)
             else Sheet.confirm(this, "התוכנה נסגרה בפעם הקודמת", details + "\n\nאפשר להעתיק את הפרטים ולשלוח למפתח.", "העתקת הפרטים") {
                 (getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("exit", details))

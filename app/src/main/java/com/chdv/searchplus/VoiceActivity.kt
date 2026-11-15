@@ -27,6 +27,7 @@ class VoiceActivity : BaseActivity() {
     private lateinit var results: LinearLayout
     private lateinit var status: TextView
     private var token = 0
+    @Volatile private var inside: List<Triple<Book, Int, List<String>>> = emptyList()
     private lateinit var loading: LinearLayout
     private lateinit var bar: android.widget.ProgressBar
     private lateinit var secs: TextView
@@ -161,6 +162,7 @@ class VoiceActivity : BaseActivity() {
         val text = raw.trim().trimEnd('.', '?', '!')
         if (text.isEmpty()) return
         if (!quiet) Library.addHistory(text)
+        inside = emptyList()
         val my = ++token
         results.removeAllViews()
         understood.text = "🔎 מתחיל לחפש…"
@@ -178,6 +180,14 @@ class VoiceActivity : BaseActivity() {
             if (stale()) return@execute
             // no place in a book – maybe the name of a book or a folder (as they are on the device)
             val named = if (ref == null) try { Catalog.find(text, null, 8).filter { it.score >= 5f } } catch (e: Throwable) { emptyList() } else emptyList()
+            if (stale()) return@execute
+            // the words that are not the book's name: look for them inside the book
+            val rest = if (named.isEmpty()) emptyList() else {
+                val nameWords = named.take(3).flatMap { com.chdv.searchplus.core.Names.words(it.book.title) + com.chdv.searchplus.core.Names.words(it.book.dir.substringAfterLast('/')) }.toSet()
+                com.chdv.searchplus.core.Names.words(text).filter { w -> w !in nameWords && w.length >= 2 && w !in com.chdv.searchplus.core.Names.PLACE }
+            }
+            if (rest.isNotEmpty()) prog("📖 מחפש \"${rest.joinToString(" ")}\" בתוך ${named.take(6).size} ספרים…", 70)
+            inside = if (rest.isNotEmpty()) try { Jump.inside(named.map { it.book }, rest) } catch (e: Throwable) { emptyList() } else emptyList()
             if (stale()) return@execute
             // not a place in a book (or no such book): the books that contain the words
             val words = if (targets.isEmpty()) try {
@@ -200,8 +210,17 @@ class VoiceActivity : BaseActivity() {
             ref != null -> understood.text = "חיפשתי ${ref.label()} – אבל לא מצאתי ספר כזה במאגר" + (if (Progress.running) " (הסריקה עדיין רצה)" else "")
             else -> understood.text = "חיפוש המילים: \"$text\""
         }
+        // inside the named books: the page where the other words are
+        val ins = inside
+        if (ins.isNotEmpty()) {
+            understood.text = "✓ מצאתי בתוך ${if (ins.size == 1) "הספר" else "${ins.size} ספרים"} – לחצו לפתיחה במקום"
+            for ((b, p, terms) in ins) results.addView(card("📖 ${b.title} · עמוד $p", Library.categoryOf(b.dir).joinToString(" › ") + " · המילים מסומנות", true) {
+                ReaderActivity.open(this, b.path, p, terms)
+            })
+            if (auto && ins.size == 1) results.postDelayed({ if (!isFinishing) results.getChildAt(0)?.performClick() }, 700)
+        }
         // the request is the name of books / a folder on the device
-        if (named.isNotEmpty()) {
+        if (named.isNotEmpty() && ins.isEmpty()) {
             understood.text = "📚 מצאתי ${if (named.size == 1) "ספר" else "${named.size} ספרים"} בשם הזה" + if (named.size > 1) " – איזה לפתוח?" else ""
             for (m in named) results.addView(card("📖 ${m.book.title}", Library.categoryOf(m.book.dir).joinToString(" › ").ifEmpty { "תיקייה ראשית" } + " · ${m.book.pages} עמ׳", true) {
                 ReaderActivity.open(this, m.book.path, Library.lastPage(m.book.path))

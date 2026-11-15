@@ -102,6 +102,13 @@ class HebRefTest {
         assertEquals("אדמו״ר הצמח צדק", Abbr.of("אדמ\"צ"))
         assertEquals("שיחיה לאורך ימים טובים אמן", Abbr.of("שליט\"א"))
         assertEquals(27, RefParser.parse("ברכות כ\"ז ע\"א")!!.daf)
+        val z = RefParser.parse("ליקוטי שיחות חלק זין")!!
+        assertEquals(7, z.volume)
+        val noach = RefParser.parse("תמצא לי שיחה לפרשת נוח")!!
+        assertEquals(Ref.Kind.SICHOS, noach.kind); assertEquals("נח", noach.parsha)
+        assertEquals("לך לך", RefParser.parse("ליקוטי שיחות פרשת לך לך")!!.parsha)
+        assertEquals("מקץ", RefParser.parse("לקוטי שיחות חלק כה מיקץ")!!.parsha)
+        assertEquals(25, RefParser.parse("לקוטי שיחות חלק כה מיקץ")!!.volume)
         assertNull(RefParser.parse("מה הדין של מי ששכח לברך"))
         assertNull(RefParser.parse("רבי שמעון בר יוחאי"))
     }

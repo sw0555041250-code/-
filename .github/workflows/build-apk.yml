@@ -52,10 +52,7 @@ jobs:
         with:
           tag_name: v1.0.${{ env.VER }}
           name: חיפוש פלוס 1.0.${{ env.VER }}
-          body: |
-            קובץ ההתקנה של חיפוש פלוס – חיפוש מעמיק בתוך ספרי PDF במכשיר.
-            הורידו את SearchPlus.apk והתקינו. מי שכבר מותקן אצלו – העדכון נשמר על האינדקס וההגדרות.
-            ${{ github.event.head_commit.message }}
+          body_path: docs/whatsnew.md
           files: SearchPlus.apk
           make_latest: true
 
