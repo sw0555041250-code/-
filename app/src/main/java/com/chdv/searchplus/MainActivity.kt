@@ -421,6 +421,35 @@ class MainActivity : BaseActivity() {
         }
         homeBox.addView(grid, lp(MATCH, WRAP).m(0, dp(2), 0, dp(4)))
 
+        // ideas for today: topics that appear in the user's own books
+        val ideas = vbox().apply {
+            setPadding(dp(16), dp(14), dp(16), dp(12))
+            background = roundBg(Col.CARD, dp(16).toFloat(), dp(1), Col.LINE)
+            if (!Col.isEink) elevation = dp(1).toFloat()
+            visibility = View.GONE
+        }
+        val hourNow = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        ideas.addView(label((if (hourNow in 4..11) "☀ בוקר טוב! " else "") + "💭 על מה נחפש היום?", 17f, Col.TEXT, true))
+        ideas.addView(label("נושאים שמופיעים בספרים שלך – לחיצה, ורואים מה יש עליהם", 13f, Col.SUB).apply { setPadding(0, dp(2), 0, dp(8)) })
+        val ideaChips = FlowLayout(this)
+        ideas.addView(ideaChips, lp(MATCH, WRAP))
+        homeBox.addView(ideas, lp(MATCH, WRAP).m(0, dp(6), 0, dp(6)))
+        exec.execute {
+            val ts = try { Topics.today() } catch (e: Throwable) { emptyList() }
+            ui {
+                if (ts.isEmpty() || isFinishing) return@ui
+                ts.forEach { t ->
+                    ideaChips.addView(chip("${t.text}  ·  ${if (t.places >= 999) "999+" else t.places}", false) {
+                        input.setText(t.text)
+                        // an idea is best searched by meaning when it is available; otherwise all the words
+                        if (Semantic.ready(this) && t.text.split(' ').size >= 2 && !semantic) { semantic = true; buildModes() }
+                        doSearch()
+                    })
+                }
+                ideas.visibility = View.VISIBLE
+            }
+        }
+
         // continue where you stopped
         Library.recent().firstOrNull()?.let { k ->
             val p = k.substringBefore('|'); val pg = k.substringAfter('|').toIntOrNull() ?: 1
@@ -539,7 +568,7 @@ class MainActivity : BaseActivity() {
         home.visibility = View.GONE
         searchChrome(true)
         list.visibility = View.VISIBLE
-        summary.text = if (semantic) "מחפש לפי משמעות… (בפעם הראשונה זה לוקח כמה שניות)" else "מחפש…"
+        summary.text = if (semantic) "💡 מחפש לפי משמעות… (בפעם הראשונה זה לוקח כמה שניות)" else "🔤 מחפש בכל עמודי ${try { Db.get().books().size } catch (e: Exception) { 0 }} הספרים…"
         crumbs.removeAllViews(); cats.removeAllViews()
         adapter.set(emptyList())
         val token = ++searchToken
@@ -649,7 +678,7 @@ class MainActivity : BaseActivity() {
         jumpBar.visibility = View.VISIBLE
         jumpBar.setOnClickListener(null)
         exec.execute {
-            val targets = try { Jump.resolve(ref, q) } catch (e: Throwable) { emptyList() }
+            val targets = try { Jump.resolve(ref, q, { token != searchToken }) { t -> ui { if (token == searchToken) jumpBar.text = "⤶ $t" } } } catch (e: Throwable) { emptyList() }
             ui {
                 if (token != searchToken) return@ui
                 if (targets.isEmpty()) {

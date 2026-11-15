@@ -113,6 +113,7 @@ class ReaderActivity : BaseActivity() {
         head.addView(label("→", 24f, Col.ACC, true).apply { setPadding(dp(10), 0, dp(10), 0); setOnClickListener { finish() } })
         titleView = label("", 16f, Col.TEXT, true).apply { setSingleLine(); ellipsize = android.text.TextUtils.TruncateAt.END }
         head.addView(titleView, lp(0, WRAP, 1f))
+        if (terms.isNotEmpty() || phrase != null) head.addView(headerButton("✨") { showAgain() }.apply { contentDescription = "להדגיש שוב" })
         head.addView(headerButton("חיפוש בספר") { searchInBook() })
         head.addView(headerButton("⋯") { menu() })
         root.addView(head, lp(MATCH, WRAP))
@@ -331,24 +332,13 @@ class ReaderActivity : BaseActivity() {
         val p = path
         val items = ArrayList<Pair<String, () -> Unit>>()
         items.add("מעבר לעמוד…" to { goTo() })
+        if (terms.isNotEmpty() || phrase != null) items.add("✨ להדגיש שוב את מה שחיפשתי" to { showAgain() })
         if (p != null) {
             val key = "$p|$page"
             items.add((if (Library.isFavorite(key)) "הסרה מהמועדפים" else "הוספת העמוד למועדפים ★") to {
                 val on = Library.toggleFavorite(key); toast(if (on) "נוסף למועדפים" else "הוסר מהמועדפים")
             })
             items.add("📄 תצוגת טקסט – שורות מסודרות" to { textView() })
-            items.add("📖 ראשי תיבות בעמוד הזה" to {
-                val t = Db.get().bookByPath(p)?.let { Db.get().pageText(it.id, page) }
-                val ab = if (t.isNullOrBlank()) emptyList() else AbbrActivity.onPage(t)
-                if (ab.isEmpty()) toast("לא נמצאו ראשי תיבות מוכרים בעמוד הזה")
-                else {
-                    val box = vbox().apply { setPadding(dp(16), dp(14), dp(16), dp(14)) }
-                    box.addView(label("ראשי תיבות בעמוד $page", 18f, Col.TEXT, true))
-                    val l = vbox(); ab.forEach { (k, v) -> l.addView(AbbrActivity.row(this, k, v)) }
-                    box.addView(android.widget.ScrollView(this).apply { addView(l) }, lp(MATCH, dp(420)).m(0, dp(8), 0, 0))
-                    Sheet.make(this, box).show()
-                }
-            })
             items.add("העתקת הטקסט של העמוד" to { copyPage() })
             items.add("שיתוף הקובץ" to {
                 val i = Intent(Intent.ACTION_SEND).setType("application/pdf")
@@ -414,6 +404,14 @@ class ReaderActivity : BaseActivity() {
         dlg = Sheet.make(this, body).also { it.show() }
     }
     private var dlg: android.app.Dialog? = null
+
+    /** Mark again where the searched words are (after the marking was calmed by a touch, or on another page). */
+    private fun showAgain() {
+        if (terms.isEmpty() && phrase == null) { toast("אין מילים לסמן – חפשו בספר"); return }
+        if (hits.isNotEmpty() && page !in hits) { nextHit(); return }
+        phrasePage = if (phrase != null) page else phrasePage
+        show()
+    }
 
     private fun copyPage() {
         val p = path ?: return

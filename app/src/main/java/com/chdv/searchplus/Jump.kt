@@ -35,13 +35,16 @@ object Jump {
      * The books for a request (by the names they have on the device), each opened at the place.
      * [stale] lets a newer request stop an older one at once.
      */
-    fun resolve(ref: Ref, raw: String? = null, stale: () -> Boolean = { false }): List<Target> {
+    fun resolve(ref: Ref, raw: String? = null, stale: () -> Boolean = { false }, progress: (String) -> Unit = {}): List<Target> {
         val request = raw ?: (listOf(ref.work) + ref.extra).joinToString(" ")
         val manyVolumes = ref.siman != null || ref.chapter != null
+        progress("🔎 מחפש בשמות ${Db.get().books().size} הספרים…")
         val cands = Catalog.find(request, ref, if (manyVolumes) 10 else 6)
+        if (cands.isNotEmpty()) progress("📚 נמצאו ${cands.size} ספרים מתאימים – מחפש בהם את המקום…")
         val out = ArrayList<Target>()
-        for (m in cands) {
+        for ((k, m) in cands.withIndex()) {
             if (stale()) return out
+            progress("📖 ${k + 1}/${cands.size} · מחפש את ${ref.label()} ב„${m.book.title}”…")
             out.add(try { locate(m.book, ref) } catch (e: Throwable) { Target(m.book, 1, false, ref, null) })
         }
         // a siman / chapter: a work in several volumes – keep the volumes where it was really found

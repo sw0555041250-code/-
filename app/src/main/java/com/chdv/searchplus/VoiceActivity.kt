@@ -133,14 +133,17 @@ class VoiceActivity : BaseActivity() {
         if (!quiet) Library.addHistory(text)
         val my = ++token
         results.removeAllViews()
-        understood.text = "מחפש…"
+        understood.text = "🔎 מתחיל לחפש…"
         exec.execute {
             val ref = try { RefParser.parse(text) } catch (e: Throwable) { null }
             val noDaf = ref != null && ref.kind == Ref.Kind.GEMARA && ref.daf == null
             // a newer request (typing on) makes this one stale: stop at once, don't block the next
             if (my != token) return@execute
             val stale = { my != token }
-            val targets = if (ref != null && !noDaf) try { Jump.resolve(ref, text, stale) } catch (e: Throwable) { emptyList() } else emptyList()
+            val prog: (String) -> Unit = { t -> ui { if (my == token) understood.text = t } }
+            if (ref != null) prog("💡 הבנתי: ${ref.label()}")
+            val targets = if (ref != null && !noDaf) try { Jump.resolve(ref, text, stale, prog) } catch (e: Throwable) { emptyList() } else emptyList()
+            if (targets.isEmpty() && !stale()) prog("🔤 מחפש את המילים בתוך הספרים…")
             if (stale()) return@execute
             // no place in a book – maybe the name of a book or a folder (as they are on the device)
             val named = if (ref == null) try { Catalog.find(text, null, 8).filter { it.score >= 5f } } catch (e: Throwable) { emptyList() } else emptyList()
