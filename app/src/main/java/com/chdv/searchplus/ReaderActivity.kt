@@ -314,17 +314,27 @@ class ReaderActivity : BaseActivity() {
             return
         }
         Sheet.input(this, "חיפוש בתוך הספר", terms.joinToString(" ") { it.removeSuffix("*") }, "מה לחפש?") { q ->
-            val r = Search.run(q, Match.valueOf(Prefs.s("match", "PHRASE")), Prefs.b("prefixes", true), b.id)
-            val pages = r.books.firstOrNull()?.pages ?: emptyList()
-            if (pages.isEmpty()) { Sheet.info(this, "לא נמצא", "\"$q\" לא נמצא בספר הזה."); return@input }
-            terms = r.terms
-            phrase = null
-            hits = pages.map { it.page }.distinct().toIntArray()
-            val expr = Search.buildMatch(r.terms, Match.valueOf(Prefs.s("match", "PHRASE")), Prefs.b("prefixes", true))
-            Sheet.actions(this, "נמצא ב-${hits.size} עמודים", pages.take(200).map { ph ->
-                val sn = Search.snippet(expr, ph.pageId)?.replace("\u0001", "«")?.replace("\u0002", "»")?.replace('\n', ' ') ?: ""
-                "עמוד ${ph.page}:  $sn" to { page = ph.page; show() }
-            })
+            toast("מחפש…")
+            // the search and the excerpts are read in the background – the page never freezes
+            Thread {
+                val m = Match.valueOf(Prefs.s("match", "PHRASE")); val pre = Prefs.b("prefixes", true)
+                val r = try { Search.run(q, m, pre, b.id) } catch (e: Throwable) { null }
+                val pages = r?.books?.firstOrNull()?.pages ?: emptyList()
+                val expr = if (r != null) Search.buildMatch(r.terms, m, pre) else ""
+                val lines = pages.take(60).map { ph ->
+                    ph to (Search.snippet(expr, ph.pageId)?.replace("\u0001", "«")?.replace("\u0002", "»")?.replace('\n', ' ') ?: "")
+                } + pages.drop(60).take(140).map { it to "" }
+                ui {
+                    if (isFinishing) return@ui
+                    if (r == null || pages.isEmpty()) { Sheet.info(this, "לא נמצא", "\"$q\" לא נמצא בספר הזה."); return@ui }
+                    terms = r.terms
+                    phrase = null
+                    hits = pages.map { it.page }.distinct().toIntArray()
+                    Sheet.actions(this, "נמצא ב-${hits.size} עמודים", lines.map { (ph, sn) ->
+                        "עמוד ${ph.page}:  $sn" to { page = ph.page; show() }
+                    })
+                }
+            }.start()
         }
     }
 

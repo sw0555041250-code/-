@@ -67,8 +67,17 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "index.db", null,
 
     @Volatile
     private var cache: Map<Long, Book>? = null
+    @Volatile private var byPath: Map<String, Book> = emptyMap()
+    @Volatile private var stale = false
+    @Volatile private var reloading = false
+    @Volatile private var loadedAt = 0L
 
-    fun invalidate() { cache = null; Catalog.invalidate() }
+    /**
+     * The scan saves a book every second or two. The book list is NOT thrown away each time (reading
+     * 16,000 rows on every save – sometimes on the screen's thread – made the app freeze): the current
+     * list keeps serving, and a fresh one is read in the background, at most every few seconds.
+     */
+    fun invalidate() { stale = true; Catalog.invalidate() }
 
     private fun readBook(c: android.database.Cursor) = Book(
         c.getLong(0), c.getString(1), c.getString(2), c.getString(3), c.getLong(4), c.getLong(5),
@@ -78,18 +87,35 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "index.db", null,
     private val COLS = "id,path,dir,name,size,mtime,pages,status,textPages,emptyPages"
 
     fun books(): Map<Long, Book> {
-        cache?.let { return it }
+        val c = cache ?: return load()
+        if (stale && !reloading && System.currentTimeMillis() - loadedAt > 8000) {
+            reloading = true
+            Thread { try { load() } catch (e: Throwable) {} finally { reloading = false } }.start()
+        }
+        return c
+    }
+
+    @Synchronized
+    private fun load(): Map<Long, Book> {
+        if (!stale) cache?.let { return it }
+        stale = false
         val m = HashMap<Long, Book>()
         readableDatabase.rawQuery("SELECT $COLS FROM files", null).use { c ->
             while (c.moveToNext()) { val b = readBook(c); m[b.id] = b }
         }
-        cache = m
+        byPath = m.values.associateBy { it.path }
+        cache = m; loadedAt = System.currentTimeMillis()
         return m
     }
 
-    fun book(id: Long): Book? = books()[id]
+    /** One book, fresh from the database (a book saved a moment ago may not be in the list yet). */
+    private fun readOne(where: String, arg: String): Book? = try {
+        readableDatabase.rawQuery("SELECT $COLS FROM files WHERE $where=? LIMIT 1", arrayOf(arg)).use { c -> if (c.moveToFirst()) readBook(c) else null }
+    } catch (e: Exception) { null }
 
-    fun bookByPath(path: String): Book? = books().values.firstOrNull { it.path == path }
+    fun book(id: Long): Book? = (if (stale) null else books()[id]) ?: readOne("id", id.toString())
+
+    fun bookByPath(path: String): Book? = (if (stale) null else { books(); byPath[path] }) ?: readOne("path", path)
 
     fun addFile(f: File): Long {
         val v = ContentValues().apply {
@@ -114,6 +140,7 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "index.db", null,
     fun removeFile(fileId: Long) {
         clearContent(fileId)
         writableDatabase.execSQL("DELETE FROM files WHERE id=?", arrayOf(fileId))
+        cache?.let { c -> cache = c - fileId; byPath = byPath - (c[fileId]?.path ?: "") }
         invalidate()
     }
 
@@ -131,7 +158,7 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "index.db", null,
         db.execSQL("DELETE FROM fts")
         db.execSQL("DELETE FROM pages")
         db.execSQL("UPDATE files SET status=0, pages=0, textPages=0, emptyPages=0, emb=0, err=NULL")
-        invalidate()
+        cache = null; invalidate()
     }
 
     fun pendingFiles(): List<Pair<Long, String>> {

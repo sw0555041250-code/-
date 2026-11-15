@@ -43,14 +43,14 @@ object Jump {
      * [stale] lets a newer request stop an older one at once.
      */
     /** [progress] gets a message and how far along it is (0–100). */
-    fun resolve(ref: Ref, raw: String? = null, stale: () -> Boolean = { false }, progress: (String, Int) -> Unit = { _, _ -> }): List<Target> {
+    fun resolve(ref: Ref, raw: String? = null, stale: () -> Boolean = { false }, progress: (String, Int) -> Unit = { _, _ -> },
+                cancel: android.os.CancellationSignal? = null, deep: Boolean = true): List<Target> {
         val request = raw ?: (listOf(ref.work) + ref.extra).joinToString(" ")
-        // "שיחה לפרשת נח" without a volume: every volume of the sichos where that parsha appears
-        if (ref.kind == Ref.Kind.SICHOS && ref.volume == null && ref.parsha != null && ref.page == null) {
-            val vols = Catalog.find(request, ref, 60)
-            progress("📚 מחפש את פרשת ${ref.parsha} ב-${vols.size} כרכים…", 40)
-            val found = parshaPages(vols.map { it.book }, ref.parsha!!)
-            if (found.isNotEmpty()) return found.map { (b, p) -> Target(b, p, true, ref, null) }
+        // "ליקוטי שיחות (חלק ד) נח": the page in each volume where that parsha's sicha starts
+        if (ref.parsha != null && ref.page == null && (ref.kind == Ref.Kind.SICHOS || ref.kind == Ref.Kind.GENERIC)) {
+            progress("🔎 מחפש בשמות ${Db.get().books().size} הספרים…", 15)
+            val found = parshaPlaces(request, ref, stale, progress, cancel, deep)
+            if (found.isNotEmpty() || stale()) return found
         }
         val manyVolumes = ref.siman != null || ref.chapter != null
         progress("🔎 מחפש בשמות ${Db.get().books().size} הספרים…", 15)
@@ -60,50 +60,75 @@ object Jump {
         for ((k, m) in cands.withIndex()) {
             if (stale()) return out
             progress("📖 ${k + 1}/${cands.size} · מחפש את ${ref.label()} ב„${m.book.title}”…", 35 + 60 * k / maxOf(1, cands.size))
-            out.add(try { locate(m.book, ref) } catch (e: Throwable) { Target(m.book, 1, false, ref, null) })
+            out.add(try { locate(m.book, ref, deep) } catch (e: Throwable) { Target(m.book, 1, false, ref, null) })
         }
-        // a siman / chapter: a work in several volumes – keep the volumes where it was really found
-        if (manyVolumes && out.any { it.exact }) return out.filter { it.exact }
+        // where the place was really found in some books – only those (no "page 1, estimated")
+        if (out.any { it.exact }) return out.filter { it.exact }
         return out
+    }
+
+    /** "ליקוטי שיחות", "לקו״ש" in a book's name or folders. */
+    private fun isSichos(b: Book): Boolean {
+        val t = norm(b.title + " " + b.dir.substringAfterLast('/') + " " + b.dir.substringBeforeLast('/').substringAfterLast('/'))
+        val k = t.split(' ').joinToString(" ") { key(it) }
+        return k.contains(" לקט שחת ") || t.contains(" לקוש ") || t.contains(" ליקוש ") || k.contains(" לקש ")
+    }
+
+    /**
+     * The sicha of a parsha in every fitting book, each opened at its own page: one quick query over
+     * the scanned pages that name the parsha, each page scored (heading at the top, "לפרשת נח"…),
+     * the start of the strongest run of pages in each book. Books not scanned yet: their page headers
+     * are read now. Only books where the place was really found are returned.
+     */
+    private fun parshaPlaces(request: String, ref: Ref, stale: () -> Boolean, progress: (String, Int) -> Unit,
+                             cancel: android.os.CancellationSignal?, deep: Boolean): List<Target> {
+        val parsha = ref.parsha!!
+        var cands = Catalog.find(request, ref, if (ref.volume != null) 20 else 80).map { it.book }
+        // real Likkutei Sichos volumes first – not weekly bulletins that quote them
+        if (ref.kind == Ref.Kind.SICHOS) cands.filter { isSichos(it) }.let { if (it.isNotEmpty()) cands = it }
+        if (cands.isEmpty() || stale()) return emptyList()
+        progress("📚 מחפש את פרשת $parsha בתוך ${cands.size} ספרים…", 35)
+        val texts = HashMap<Long, HashMap<Int, String>>()
+        try {
+            val expr = Search.buildMatch(Search.terms(parsha), Match.PHRASE, true)
+            Db.get().readableDatabase.rawQuery(
+                "SELECT p.file, p.page, f.body FROM fts f JOIN pages p ON p.id = f.docid WHERE f MATCH ? AND p.file IN (${cands.joinToString(",") { it.id.toString() }})",
+                arrayOf(expr), cancel).use { c ->
+                while (c.moveToNext()) texts.getOrPut(c.getLong(0)) { HashMap() }[c.getInt(1)] = c.getString(2)
+            }
+        } catch (e: Exception) { if (stale()) return emptyList() }
+        val out = ArrayList<Pair<Target, Int>>()
+        for (b in cands) {
+            val pages = texts[b.id] ?: continue
+            val (pg, score) = PageFinder.parshaPage(pages, parsha, ref.sicha) ?: continue
+            out.add(Target(b, pg, true, ref, null) to score)
+        }
+        // books the scan has not read yet: their headers, now (a few, the best named ones)
+        val unread = cands.filter { it.status != St.DONE || it.textPages == 0 }.take(if (!deep) 0 else if (ref.volume != null) 4 else 3)
+        for ((k, b) in unread.withIndex()) {
+            if (stale()) return emptyList()
+            progress("📖 קורא את „${b.title}” (עוד לא נסרק)…", 60 + 30 * k / maxOf(1, unread.size))
+            val heads = try { PdfText.heads(App.ctx, java.io.File(b.path)) } catch (e: Throwable) { emptyMap() }
+            val (pg, score) = PageFinder.parshaPage(heads, parsha, ref.sicha) ?: continue
+            out.add(Target(b, pg, true, ref, null) to score)
+        }
+        // the volume's order (חלק א, ב, ג…); translations and weak matches after
+        return out.sortedWith(compareBy<Pair<Target, Int>> { if (it.second < 10) 1 else 0 }
+            .thenBy { if (it.first.book.dir.contains("מתורגמ") || it.first.book.title.contains("מתורגמ")) 1 else 0 }
+            .thenBy { PageFinder.volumeOf(it.first.book.title) ?: PageFinder.volumeOf(it.first.book.dir.substringAfterLast('/')) ?: 999 })
+            .map { it.first }.take(30)
     }
 
     /** No such book: the closest names in the library ("did you mean…"). */
     fun suggest(text: String, max: Int = 5): List<Book> = Catalog.find(text, null, max).map { it.book }
 
 
-    private fun HebNum0(w: String) = com.chdv.searchplus.core.HebNum.gematria(w) == null || w.length > 3
 
-    /** The first page of a parsha in each book (from the scanned text – one quick query for all of them). */
-    private fun parshaPages(books: List<Book>, parsha: String): List<Pair<Book, Int>> {
-        if (books.isEmpty()) return emptyList()
-        val words = RefParser.normalize(parsha).split(' ')
-        val byId = books.associateBy { it.id }
-        val first = HashMap<Long, Int>()
-        try {
-            val expr = words.joinToString(" ")
-            Db.get().readableDatabase.rawQuery(
-                "SELECT p.file, p.page, f.body FROM fts f JOIN pages p ON p.id = f.docid WHERE f MATCH ? AND p.file IN (${books.joinToString(",") { it.id.toString() }}) ORDER BY p.file, p.page",
-                arrayOf(if (words.size > 1) "\"$expr\"" else expr)).use { c ->
-                while (c.moveToNext()) {
-                    val fid = c.getLong(0)
-                    if (fid in first) continue
-                    if (PageFinder.headerHas(c.getString(2), words)) first[fid] = c.getInt(1)
-                }
-            }
-        } catch (e: Exception) {}
-        return first.entries.mapNotNull { (id, p) -> byId[id]?.let { it to p } }
-            .sortedBy { PageFinder.volumeOf(it.first.title) ?: 999 }
-    }
-
-    /**
-     * A book named in the request, and more words: those words inside that book ("תניא אהבת ישראל").
-     * Returns the book, the first page where all the words are, and the words to mark.
-     */
-    fun inside(books: List<Book>, words: List<String>): List<Triple<Book, Int, List<String>>> {
+    fun inside(books: List<Book>, words: List<String>, cancel: android.os.CancellationSignal? = null): List<Triple<Book, Int, List<String>>> {
         if (books.isEmpty() || words.isEmpty()) return emptyList()
         val out = ArrayList<Triple<Book, Int, List<String>>>()
         for (b in books.take(6)) {
-            val r = try { Search.run(words.joinToString(" "), Match.ALL, true, b.id) } catch (e: Exception) { null } ?: continue
+            val r = try { Search.run(words.joinToString(" "), Match.ALL, true, b.id, cancel, 2000) } catch (e: Exception) { null } ?: continue
             val pages = r.books.firstOrNull()?.pages ?: continue
             if (pages.isNotEmpty()) out.add(Triple(b, pages.first().page, r.terms))
         }
@@ -112,9 +137,9 @@ object Jump {
 
     private fun needsPages(ref: Ref) = ref.parsha != null || ref.page != null || ref.siman != null || ref.chapter != null || ref.daf != null
 
-    private fun locate(b: Book, ref: Ref): Target {
+    private fun locate(b: Book, ref: Ref, deep: Boolean = true): Target {
         // a book the scan has not reached yet: read its headers now (fast native reader)
-        val pages = Db.get().pageTexts(b.id).ifEmpty { if (needsPages(ref)) PdfText.heads(App.ctx, java.io.File(b.path)) else emptyMap() }
+        val pages = Db.get().pageTexts(b.id).ifEmpty { if (deep && needsPages(ref)) PdfText.heads(App.ctx, java.io.File(b.path)) else emptyMap() }
         val count = b.pages.coerceAtLeast(1)
         when (ref.kind) {
             Ref.Kind.GEMARA -> {
@@ -133,21 +158,8 @@ object Jump {
             Ref.Kind.SICHOS -> {
                 ref.page?.let { pr -> val (pg, ok) = PageFinder.pageOfPrinted(pages, pr, count); return Target(b, pg, ok, ref, null) }
                 val parsha = ref.parsha ?: return Target(b, 1, true, ref, null)
-                val words = RefParser.normalize(parsha).split(' ')
-                val starts = pages.keys.sorted().filter { PageFinder.headerHas(pages[it]!!, words) }
-                if (starts.isEmpty()) {
-                    // search the whole page text for the parsha name as a heading word
-                    val any = pages.keys.sorted().firstOrNull { p -> RefParser.normalize(pages[p]!!.take(600)).split(' ').containsAll(words) }
-                    return Target(b, any ?: 1, any != null, ref, null)
-                }
-                val first = starts.first()
-                val n = ref.sicha
-                if (n != null && n > 1) {
-                    val mark = com.chdv.searchplus.core.HebNum.toHeb(n)
-                    val inRun = starts.filter { it - first < 120 }
-                    inRun.firstOrNull { p -> Regex("(^|\\n)\\s*$mark\\s*[.)]").containsMatchIn(pages[p]!!.take(400)) }?.let { return Target(b, it, true, ref, null) }
-                }
-                return Target(b, first, true, ref, null)
+                val at = PageFinder.parshaPage(pages, parsha, ref.sicha)
+                return Target(b, at?.first ?: 1, at != null, ref, null)
             }
             Ref.Kind.GENERIC -> {
                 val sorted = pages.keys.sorted()
@@ -158,7 +170,7 @@ object Jump {
                     val mark = Regex("(^|\\s)סימן\\s+${HebNum.toHeb(s)}(\\s|$)")
                     sorted.firstOrNull { mark.containsMatchIn(RefParser.normalize(pages[it]!!)) }?.let { return Target(b, it, true, ref, null) }
                 }
-                ref.parsha?.let { pr -> sorted.firstOrNull { PageFinder.headerHas(pages[it]!!, RefParser.normalize(pr).split(' ')) }?.let { return Target(b, it, true, ref, null) } }
+                ref.parsha?.let { pr -> PageFinder.parshaPage(pages, pr, ref.sicha)?.let { return Target(b, it.first, true, ref, null) } }
                 ref.page?.let { pr -> val (pg, ok) = PageFinder.pageOfPrinted(pages, pr, count); return Target(b, pg, ok, ref, null) }
                 return Target(b, 1, false, ref, null)
             }

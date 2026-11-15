@@ -27,6 +27,7 @@ class VoiceActivity : BaseActivity() {
     private lateinit var results: LinearLayout
     private lateinit var status: TextView
     private var token = 0
+    @Volatile private var cancel: android.os.CancellationSignal? = null
     @Volatile private var inside: List<Triple<Book, Int, List<String>>> = emptyList()
     private lateinit var loading: LinearLayout
     private lateinit var bar: android.widget.ProgressBar
@@ -164,6 +165,11 @@ class VoiceActivity : BaseActivity() {
         if (!quiet) Library.addHistory(text)
         inside = emptyList()
         val my = ++token
+        // the previous request stops at once (also inside a database query) – it never holds up this one
+        try { cancel?.cancel() } catch (e: Throwable) {}
+        val sig = android.os.CancellationSignal(); cancel = sig
+        // while typing: only places and book names (quick). The words inside all the books – on "לפתוח"
+        val typingNow = quiet
         results.removeAllViews()
         understood.text = "🔎 מתחיל לחפש…"
         startLoading()
@@ -175,8 +181,8 @@ class VoiceActivity : BaseActivity() {
             val stale = { my != token }
             val prog: (String, Int) -> Unit = { t, pct -> ui { if (my == token) { understood.text = t; target = maxOf(target, pct) } } }
             if (ref != null) prog("💡 הבנתי: ${ref.label()}", 10)
-            val targets = if (ref != null && !noDaf) try { Jump.resolve(ref, text, stale, prog) } catch (e: Throwable) { emptyList() } else emptyList()
-            if (targets.isEmpty() && !stale()) prog("🔤 מחפש את המילים בתוך הספרים…", 90)
+            val targets = if (ref != null && !noDaf) try { Jump.resolve(ref, text, stale, prog, sig, deep = !typingNow) } catch (e: Throwable) { emptyList() } else emptyList()
+            if (targets.isEmpty() && !stale() && !typingNow) prog("🔤 מחפש את המילים בתוך הספרים…", 90)
             if (stale()) return@execute
             // no place in a book – maybe the name of a book or a folder (as they are on the device)
             val named = if (ref == null) try { Catalog.find(text, null, 8).filter { it.score >= 5f } } catch (e: Throwable) { emptyList() } else emptyList()
@@ -187,26 +193,33 @@ class VoiceActivity : BaseActivity() {
                 com.chdv.searchplus.core.Names.words(text).filter { w -> w !in nameWords && w.length >= 2 && w !in com.chdv.searchplus.core.Names.PLACE }
             }
             if (rest.isNotEmpty()) prog("📖 מחפש \"${rest.joinToString(" ")}\" בתוך ${named.take(6).size} ספרים…", 70)
-            inside = if (rest.isNotEmpty()) try { Jump.inside(named.map { it.book }, rest) } catch (e: Throwable) { emptyList() } else emptyList()
+            inside = if (rest.isNotEmpty()) try { Jump.inside(named.map { it.book }, rest, sig) } catch (e: Throwable) { emptyList() } else emptyList()
             if (stale()) return@execute
             // not a place in a book (or no such book): the books that contain the words
-            val words = if (targets.isEmpty()) try {
-                Search.run(text, Match.ALL, true).takeIf { it.books.isNotEmpty() } ?: Search.run(text, Match.ANY, true)
+            // place words ("מסכת", "דף", "עמוד") are not what is looked for inside the pages
+            val plain = text.split(Regex("\\s+")).filter { w -> com.chdv.searchplus.core.RefParser.normalize(w) !in com.chdv.searchplus.core.Names.PLACE }.joinToString(" ")
+            val words = if (targets.isEmpty() && !typingNow && plain.isNotBlank()) try {
+                Search.run(plain, Match.ALL, true, null, sig, 20000).takeIf { it.books.isNotEmpty() || stale() }
+                    ?: if (plain.split(' ').size in 2..4) Search.run(plain, Match.ANY, true, null, sig, 5000) else null
             } catch (e: Throwable) { null } else null
+            if (stale()) return@execute
+            // "did you mean": also here, never on the screen's thread
+            val sug = if (ref != null && targets.isEmpty()) try { Jump.suggest(text) } catch (e: Throwable) { emptyList() } else emptyList()
             ui {
                 if (my != token || isFinishing) return@ui
-                show(text, ref, noDaf, targets, words, auto, named)
+                show(text, ref, noDaf, targets, words, auto, named, typingNow, sug)
             }
         }
     }
 
-    private fun show(text: String, ref: Ref?, noDaf: Boolean, targets: List<Jump.Target>, words: Results?, auto: Boolean, named: List<Catalog.Match> = emptyList()) {
+    private fun show(text: String, ref: Ref?, noDaf: Boolean, targets: List<Jump.Target>, words: Results?, auto: Boolean, named: List<Catalog.Match> = emptyList(), live: Boolean = false, sug: List<Book> = emptyList()) {
         stopLoading()
         results.removeAllViews()
         when {
             noDaf -> understood.text = "הבנתי שמדובר במסכת ${ref!!.work} – איזה דף? למשל: \"${ref.work} דף כ״ז עמוד א\""
             ref != null && targets.size == 1 -> understood.text = "✓ מצאתי! ${ref.label()} – " + if (targets[0].exact) "לחצו לפתיחה" else "בעמוד המשוער, אפשר לתקן בקורא"
             ref != null && targets.isNotEmpty() -> understood.text = "✓ מצאתי לך ${targets.size} אפשרויות ל${ref.label()} – באיזו לפתוח?"
+            live && named.isEmpty() -> understood.text = "✍ ממשיכים לכתוב… ללחוץ „לפתוח” כדי לחפש גם בתוך כל הספרים"
             ref != null -> understood.text = "חיפשתי ${ref.label()} – אבל לא מצאתי ספר כזה במאגר" + (if (Progress.running) " (הסריקה עדיין רצה)" else "")
             else -> understood.text = "חיפוש המילים: \"$text\""
         }
@@ -229,7 +242,6 @@ class VoiceActivity : BaseActivity() {
         }
         // no such book: the closest names in the library
         if (ref != null && targets.isEmpty()) {
-            val sug = try { Jump.suggest(text) } catch (e: Throwable) { emptyList() }
             if (sug.isNotEmpty()) {
                 results.addView(label("אולי התכוונת ל:", 14.5f, Col.SUB, true).apply { setPadding(dp(4), dp(4), dp(4), dp(2)) })
                 for (b in sug) results.addView(card("📖 ${b.title}", Library.categoryOf(b.dir).joinToString(" › "), false) { ReaderActivity.open(this, b.path, 1) })
@@ -281,5 +293,5 @@ class VoiceActivity : BaseActivity() {
         layoutParams = lp(MATCH, WRAP).m(0, dp(4), 0, dp(4))
     }
 
-    override fun onDestroy() { super.onDestroy(); exec.shutdown() }
+    override fun onDestroy() { super.onDestroy(); try { cancel?.cancel() } catch (e: Throwable) {}; exec.shutdown() }
 }

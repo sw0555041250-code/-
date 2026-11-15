@@ -77,6 +77,7 @@ class MainActivity : BaseActivity() {
     private var expr = ""
     private val expanded = HashSet<Long>()
     private var searchToken = 0
+    @Volatile private var searchCancel: android.os.CancellationSignal? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -568,16 +569,20 @@ class MainActivity : BaseActivity() {
         home.visibility = View.GONE
         searchChrome(true)
         list.visibility = View.VISIBLE
-        summary.text = if (semantic) "💡 מחפש לפי משמעות… (בפעם הראשונה זה לוקח כמה שניות)" else "🔤 מחפש בכל עמודי ${try { Db.get().books().size } catch (e: Exception) { 0 }} הספרים…"
+        summary.text = if (semantic) "💡 מחפש לפי משמעות… (בפעם הראשונה זה לוקח כמה שניות)" else "🔤 מחפש בתוך כל הספרים…"
         crumbs.removeAllViews(); cats.removeAllViews()
         adapter.set(emptyList())
         val token = ++searchToken
-        showJump(q, token, auto = autoOpen)
+        // a search still running stops now (also inside the database) – it never holds up this one
+        try { searchCancel?.cancel() } catch (e: Throwable) {}
+        val sig = android.os.CancellationSignal(); searchCancel = sig
+        showJump(q, token, auto = autoOpen, sig = sig)
         val sem = semantic
         val m = Match.valueOf(Prefs.s("match", "PHRASE"))
         val pre = Prefs.b("prefixes", true)
         exec.execute {
-            val r = if (sem) Search.runSemantic(this, q) { t -> ui { if (token == searchToken) summary.text = t } } else Search.run(q, m, pre)
+            val r = if (sem) Search.runSemantic(this, q) { t -> ui { if (token == searchToken) summary.text = t } } else Search.run(q, m, pre, null, sig)
+            if (token != searchToken) return@execute
             val e = if (sem) "" else Search.buildMatch(r.terms, m, pre)
             ui {
                 if (token != searchToken) return@ui
@@ -629,8 +634,18 @@ class MainActivity : BaseActivity() {
                 t.lines().filter { it.isNotBlank() }.let { l -> (l.take(2) + l.filter { "searchplus" in it }.take(6)).distinct().joinToString("\n") }
             } } catch (x: Exception) { null }
             File(filesDir, "crash.txt").delete()
+            // not responding: where the screen's thread was stuck (from the system's report / our own watch)
+            val anr = if (r == android.app.ApplicationExitInfo.REASON_ANR) try {
+                e.traceInputStream?.bufferedReader()?.use { it.readText() }?.let { t ->
+                    val main = t.substringAfter("\"main\"", "").lines().drop(1).takeWhile { it.isNotBlank() }
+                    (main.filter { "searchplus" in it || "sqlite" in it.lowercase() || "pdfium" in it.lowercase() }.take(8).ifEmpty { main.take(8) }).joinToString("\n")
+                }
+            } catch (x: Throwable) { null } else null
+            val freeze = try { File(filesDir, "freeze.txt").takeIf { it.exists() }?.readText()?.take(1500) } catch (x: Throwable) { null }
+            File(filesDir, "freeze.txt").delete()
             val details = "$why\n(${e.reason}/${e.status} ${e.description ?: ""}) גרסה ${packageManager.getPackageInfo(packageName, 0).versionName}" +
-                (trace?.let { "\n\n$it" } ?: "")
+                (trace?.let { "\n\n$it" } ?: "") + (anr?.takeIf { it.isNotBlank() }?.let { "\n\n$it" } ?: "") +
+                (if (anr.isNullOrBlank()) freeze?.let { "\n\n$it" } ?: "" else "")
             if (busy > 0 && e.timestamp >= busy) voiceCrashSheet(details)
             else Sheet.confirm(this, "התוכנה נסגרה בפעם הקודמת", details + "\n\nאפשר להעתיק את הפרטים ולשלוח למפתח.", "העתקת הפרטים") {
                 (getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("exit", details))
@@ -671,7 +686,7 @@ class MainActivity : BaseActivity() {
     }
 
     /** When the search is a reference (ברכות דף כז / ליקוטי שיחות חלק ג ויצא), offer to go straight there. */
-    private fun showJump(q: String, token: Int, auto: Boolean) {
+    private fun showJump(q: String, token: Int, auto: Boolean, sig: android.os.CancellationSignal? = null) {
         jumpBar.visibility = View.GONE
         val ref = try { RefParser.parse(q) } catch (e: Throwable) { null } ?: return
         if (ref.kind == com.chdv.searchplus.core.Ref.Kind.GEMARA && ref.daf == null) {
@@ -684,7 +699,7 @@ class MainActivity : BaseActivity() {
         jumpBar.visibility = View.VISIBLE
         jumpBar.setOnClickListener(null)
         exec.execute {
-            val targets = try { Jump.resolve(ref, q, { token != searchToken }) { t, _ -> ui { if (token == searchToken) jumpBar.text = "⤶ $t" } } } catch (e: Throwable) { emptyList() }
+            val targets = try { Jump.resolve(ref, q, { token != searchToken }, { t, _ -> ui { if (token == searchToken) jumpBar.text = "⤶ $t" } }, sig) } catch (e: Throwable) { emptyList() }
             ui {
                 if (token != searchToken) return@ui
                 if (targets.isEmpty()) {
@@ -972,6 +987,7 @@ class MainActivity : BaseActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        try { searchCancel?.cancel() } catch (e: Throwable) {}
         exec.shutdown(); snipExec.shutdown()
     }
 }

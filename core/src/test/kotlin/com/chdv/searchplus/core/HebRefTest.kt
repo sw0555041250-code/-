@@ -127,4 +127,24 @@ class HebRefTest {
         assertEquals(64, PageFinder.pageOfPrinted(book, 58, 300).first)
         assert(PageFinder.hasNumbered("תניא פרק ה\n...", "פרק", 5))
     }
+
+    @Test fun parshaPage() {
+        // a volume: title, table of contents (every parsha), בראשית 10-79, נח 80-95 (sicha ב on 88), לך לך 96-140
+        val toc = "תוכן הענינים\nבראשית 1\nנח 70\nלך לך 90\nוירא 130\nחיי שרה 170\nתולדות 200\nויצא 230\nוישלח 260\nוישב 300\nמקץ 330"
+        val book = HashMap<Int, String>()
+        book[1] = "לקוטי שיחות\nחלק ה"; book[3] = toc
+        for (p in 10..79) book[p] = "${p - 4}\nלקוטי שיחות בראשית\nטקסט על הבריאה ואדם הראשון. וינח בגן עדן"
+        book[79] = book[79] + "\nבשבת פרשת נח יתבאר"   // the end of the previous sicha mentions the next one
+        book[80] = "${76}\nלקוטי שיחות נח\nא. בפרשתנו מסופר על נח והתיבה, ובפרשת נח רואים"
+        for (p in 81..95) book[p] = "${p - 4}\nלקוטי שיחות נח\n" + (if (p == 88) "ב. " else "") + "טקסט על המבול והתיבה של נח"
+        for (p in 96..140) book[p] = "${p - 4}\nלקוטי שיחות לך לך\nטקסט על אברהם"
+        assertEquals(80, PageFinder.parshaPage(book, "נח")!!.first)
+        assertEquals(88, PageFinder.parshaPage(book, "נח", 2)!!.first)
+        assertEquals(96, PageFinder.parshaPage(book, "לך לך")!!.first)
+        assertEquals(0, PageFinder.parshaScore(toc, "נח"))
+        assertNull(PageFinder.parshaPage(book, "ויגש"))
+        // a book without running headers: the page that speaks of the parsha most
+        val plain = mapOf(5 to "דברים על התיבה", 40 to "שיחת ש\"פ נח תשמ\"ה. בפרשת נח מסופר", 41 to "ענין אחר ונח לו")
+        assertEquals(40, PageFinder.parshaPage(plain, "נח")!!.first)
+    }
 }

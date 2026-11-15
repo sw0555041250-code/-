@@ -114,6 +114,14 @@
 
 ---
 
+### עדכונים אחרונים (מעבר מהיר מדויק, היתקעויות, הורדת מודלים)
+- `PageFinder.parshaScore` / `parshaPage` (core, נבדק ב-HebRefTest.parshaPage): ניקוד לכל עמוד (כותרת רצה בשורות הראשונות +10, "לפרשת X"/"פ׳ X" +3, השם עצמו עד +8, תוכן עניינים = 0). העמוד = תחילת הרצף החזק ביותר; "שיחה ב" = העמוד עם "ב." ברצף.
+- `Jump.parshaPlaces`: מועמדים מ-Catalog (עד 80), עדיפות לספרים ששמם/תיקייתם "לקוטי שיחות"/לקו״ש, שאילתת FTS אחת לכל המועמדים, ו-`PdfText.heads` לספרים שלא נסרקו (רק כש-deep). מחזיר רק מקומות שנמצאו. `resolve` מחזיר רק תוצאות exact אם יש כאלה.
+- ביטול: `Search.run(..., cancel: CancellationSignal, maxRows)`, `Jump.resolve(..., cancel, deep)`. VoiceActivity: בזמן הקלדה (quiet) deep=false ואין חיפוש מילים בכל הספרים; כל בקשה חדשה מבטלת את הקודמת. MainActivity מבטל גם הוא.
+- `Db.books()`: לא נזרק אחרי כל שמירה; מתרענן ברקע לכל היותר כל 8 שניות. `book(id)`/`bookByPath` קוראים שורה אחת כשהרשימה ישנה.
+- שומר מסך: `App.watchMainThread` כותב `freeze.txt` אם ה-main thread תקוע מעל 4 שניות; ב-ANR מוצג גם ה-trace של המערכת (`ApplicationExitInfo.traceInputStream`).
+- הורדות: `Net.download` מנסה קודם את Release `models` ב-GitHub (`mirror-models.yml` מעתיק לשם מ-Hugging Face, שם הקובץ: `<repo>__<path עם _>`), ואז Hugging Face; ממשיך הורדה שנקטעה (Range). סיבה: BOOX דחה את התעודה של שרתי הקבצים של HF.
+
 ## 5. החלטות חשובות – ולמה
 
 1. **שמות מהמכשיר, לא רשימה קבועה** – הבקשה מותאמת לשמות התיקיות והקבצים שנמצאו בסריקה (`Names`). שינוי שם תיקייה + סריקה = מוכר מיד. הרשימות הקבועות (`Works`, `Abbr`) רק עוזרות.

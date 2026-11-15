@@ -1,0 +1,47 @@
+name: Copy the AI models to the app's release
+
+# Some devices (e.g. BOOX on Android 11) refuse the certificate of Hugging Face's file servers
+# ("Trust anchor for certification path not found"). The app downloads every model first from
+# this release on GitHub, which every device trusts, and only then from Hugging Face.
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/mirror-models.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download from Hugging Face
+        run: |
+          mkdir m && cd m
+          get() { # repo path -> <name>__<path with _>
+            name="${1#*/}__$(echo "$2" | tr / _)"
+            curl -fsSL --retry 5 -o "$name" "https://huggingface.co/$1/resolve/main/$2"
+            ls -la "$name"
+          }
+          for r in Xenova/whisper-base Xenova/whisper-small; do
+            get $r tokenizer.json
+            get $r onnx/encoder_model_quantized.onnx
+            get $r onnx/decoder_model_merged_quantized.onnx
+          done
+          for r in Xenova/multilingual-e5-small Xenova/bge-m3; do
+            get $r tokenizer.json
+            get $r onnx/model_quantized.onnx
+          done
+
+      - name: Publish (separate from the app updates – not "latest")
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: models
+          name: מודלים – חיפוש פלוס
+          body: |
+            קבצי מודלי הבינה (זיהוי דיבור, חיפוש לפי משמעות, הבנה עמוקה). התוכנה מורידה אותם מכאן בעצמה – אין צורך להוריד ידנית.
+          files: m/*
+          prerelease: true
+          make_latest: false

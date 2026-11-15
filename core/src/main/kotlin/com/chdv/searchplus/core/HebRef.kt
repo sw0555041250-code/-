@@ -570,6 +570,68 @@ object PageFinder {
     }
 
     /** Is this page the start of a section called [name] (parsha, chapter...)? Looks at the top lines. */
+    // parsha names that are not also everyday words ("בא", "צו", "ראה"…) – many of them on one page = a table of contents
+    private val TOC_NAMES by lazy {
+        val common = setOf("בא", "צו", "ראה", "עקב", "שלח", "נשא", "אמור", "שמות", "דברים", "פסח", "בהר", "אחרי", "נח", "חנוכה", "פורים", "שבועות", "ויקרא", "במדבר", "בראשית")
+        RefParser.PARSHIYOS.map { RefParser.normalize(it) }.filter { it !in common }.toSet()
+    }
+
+    private fun countOf(hay: String, needle: String): Int {
+        var n = 0; var i = hay.indexOf(needle)
+        while (i >= 0) { n++; i = hay.indexOf(needle, i + needle.length - 1) }
+        return n
+    }
+
+    /**
+     * How surely this page is (in) the section of a parsha: its name at the top of the page (+10),
+     * "פרשת נח" / "לפרשת נח" / "פ׳ נח" in the text (+3 each), the name itself (+1 each, up to 8).
+     * A table of contents (which names every parsha) is 0 – it is not the place.
+     */
+    fun parshaScore(pageText: String, parsha: String): Int {
+        val p = RefParser.normalize(parsha)
+        val words = p.split(' ')
+        val t = " " + RefParser.normalize(pageText) + " "
+        if (TOC_NAMES.count { it != p && t.contains(" $it ") } >= 6) return 0
+        // the running header: the first lines of the page (not a mention further down a short page)
+        val top = pageText.lineSequence().filter { it.isNotBlank() }.take(3).joinToString("\n").take(160)
+        var s = if (headerHas(top, words)) 10 else 0
+        for (pre in listOf("פרשת ", "לפרשת ", "בפרשת ", "ופרשת ", "פ ", "לפ ", "פר ", "פרש ", "שיחת ", "ש\"פ "))
+            s += 3 * countOf(t, " $pre$p ")
+        var n = 0
+        for (pre in listOf("", "ל", "ב", "ו", "ה", "מ", "ש")) n += countOf(t, " $pre$p ")
+        return s + minOf(n, 8)
+    }
+
+    /**
+     * The page where a parsha's section starts in one book: the first page of the strongest run of
+     * pages that carry the parsha at their top; without such a run, the page that speaks of it most.
+     * Returns (page, score) or null when the book has no such place. [sicha] = the n-th sicha of it.
+     */
+    fun parshaPage(pages: Map<Int, String>, parsha: String, sicha: Int? = null): Pair<Int, Int>? {
+        val scores = pages.mapValues { (_, t) -> parshaScore(t, parsha) }.filterValues { it > 0 }
+        if (scores.isEmpty()) return null
+        val strong = scores.filterValues { it >= 10 }.keys.sorted()
+        if (strong.isNotEmpty()) {
+            // runs of header pages (a gap of a page or two is a picture / an empty page)
+            val runs = ArrayList<MutableList<Int>>()
+            for (p in strong) if (runs.isNotEmpty() && p - runs.last().last() <= 3) runs.last().add(p) else runs.add(mutableListOf(p))
+            val best = runs.maxWith(compareBy<MutableList<Int>> { r -> r.sumOf { scores[it] ?: 0 } }.thenByDescending { -it.first() })
+            var start = best.first()
+            // the heading page just before the run (title page of the sicha, no running header)
+            // (not the last page of the previous parsha, which may announce this one)
+            val prev = pages[start - 1]
+            if ((scores[start - 1] ?: 0) >= 4 && prev != null &&
+                RefParser.PARSHIYOS.map { RefParser.normalize(it) }.none { it != RefParser.normalize(parsha) && it.length > 2 && headerHas(prev, it.split(" ")) }) start -= 1
+            if (sicha != null && sicha > 1) {
+                val mark = Regex("(^|\\n)\\s*${HebNum.toHeb(sicha)}\\s*[.)]")
+                best.firstOrNull { p -> mark.containsMatchIn(pages[p]!!.take(400)) }?.let { return it to best.sumOf { scores[it] ?: 0 } }
+            }
+            return start to best.sumOf { scores[it] ?: 0 }
+        }
+        val top = scores.entries.maxWith(compareBy<Map.Entry<Int, Int>> { it.value }.thenByDescending { -it.key })
+        return if (top.value >= 4) top.key to top.value else null
+    }
+
     fun headerHas(pageText: String, words: List<String>): Boolean {
         val head = RefParser.normalize(pageText.take(220))
         val hw = head.split(' ').toSet()

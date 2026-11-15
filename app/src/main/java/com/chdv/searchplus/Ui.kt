@@ -49,6 +49,30 @@ class App : Application() {
             }
             prev?.uncaughtException(t, e)
         }
+        watchMainThread()
+    }
+
+    /**
+     * If the screen's thread is ever stuck for more than 4 seconds, write down where (the system's
+     * "not responding" message gives no reason) – shown on the next start, so the cause can be fixed.
+     */
+    private fun watchMainThread() {
+        val main = android.os.Looper.getMainLooper().thread
+        Thread {
+            var recorded = false
+            while (true) {
+                val beat = java.util.concurrent.atomic.AtomicBoolean(false)
+                App.main.post { beat.set(true) }
+                Thread.sleep(4000)
+                if (!beat.get()) {
+                    if (!recorded) try {
+                        val st = main.stackTrace.take(25).joinToString("\n") { "  at $it" }
+                        java.io.File(filesDir, "freeze.txt").writeText("${java.util.Date()} המסך נתקע:\n$st".take(5000))
+                        recorded = true
+                    } catch (x: Throwable) {}
+                } else recorded = false
+            }
+        }.apply { isDaemon = true; name = "watch"; priority = Thread.MIN_PRIORITY }.start()
     }
 
     override fun onTrimMemory(level: Int) {

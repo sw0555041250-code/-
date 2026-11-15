@@ -64,7 +64,12 @@ object Search {
         }
     }
 
-    fun run(q: String, match: Match, prefixes: Boolean, inFile: Long? = null): Results {
+    /**
+     * [cancel] stops the query in the middle (a newer request came) – SQLite checks it while it works,
+     * so a slow search never holds up the next one. [maxRows] keeps quick lookups quick.
+     */
+    fun run(q: String, match: Match, prefixes: Boolean, inFile: Long? = null,
+            cancel: android.os.CancellationSignal? = null, maxRows: Int = MAX_ROWS): Results {
         val terms = terms(q)
         if (terms.isEmpty()) return Results(q, terms, emptyList(), false, false)
         val expr = buildMatch(terms, match, prefixes)
@@ -74,8 +79,8 @@ object Search {
         var rows = 0
         try {
             val sql = "SELECT p.file, p.page, p.id FROM fts JOIN pages p ON p.id = fts.docid WHERE fts MATCH ?" +
-                (if (inFile != null) " AND p.file = $inFile" else "") + " LIMIT $MAX_ROWS"
-            db.readableDatabase.rawQuery(sql, arrayOf(expr)).use { c ->
+                (if (inFile != null) " AND p.file = $inFile" else "") + " LIMIT $maxRows"
+            db.readableDatabase.rawQuery(sql, arrayOf(expr), cancel).use { c ->
                 while (c.moveToNext()) {
                     rows++
                     val fid = c.getLong(0)
@@ -101,7 +106,7 @@ object Search {
             h.pages.sortBy { it.page }
             h.score = h.pages.size.toFloat() + if (h.nameMatch) 10000f else 0f
         }
-        return Results(q, terms, byBook.values.toList(), false, rows >= MAX_ROWS)
+        return Results(q, terms, byBook.values.toList(), false, rows >= maxRows)
     }
 
     fun runSemantic(c: Context, q: String, progress: (String) -> Unit = {}): Results {

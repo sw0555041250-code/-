@@ -346,15 +346,47 @@ object Net {
         return try { c.inputStream.bufferedReader().use { it.readText() } } finally { c.disconnect() }
     }
 
+    /** A copy of every model file in the app's own GitHub release ("models"). */
+    private const val MIRROR = "https://github.com/sw0555041250-code/Search-Plus-/releases/download/models/"
+
+    /** "https://huggingface.co/Xenova/bge-m3/resolve/main/onnx/model_quantized.onnx" → its name in the release. */
+    fun mirrorOf(url: String): String? {
+        val m = Regex("^https://huggingface\\.co/[^/]+/([^/]+)/resolve/main/(.+)$").find(url) ?: return null
+        return MIRROR + m.groupValues[1] + "__" + m.groupValues[2].replace('/', '_')
+    }
+
+    /**
+     * Downloads a model file. First from the app's own release on GitHub (the device trusts it – some
+     * devices refuse the certificate of Hugging Face's file servers: "Trust anchor … not found"), then
+     * from Hugging Face. A broken connection continues from where it stopped (nothing is downloaded twice).
+     */
     fun download(url: String, out: File, progress: (Int) -> Unit) {
+        val sources = listOfNotNull(mirrorOf(url), url)
+        var last: Exception? = null
+        for (src in sources) for (attempt in 0 until 4) {
+            try { fetch(src, out, progress); return } catch (e: java.io.FileNotFoundException) { last = e; break } catch (e: Exception) {
+                last = e
+                if (e.message == "HTTP 416") { File(out.parentFile, out.name + ".part").delete(); continue }
+                if (e.message?.startsWith("HTTP 4") == true) break
+                Thread.sleep(2000L * (attempt + 1))
+            }
+        }
+        throw last ?: java.io.IOException("download failed")
+    }
+
+    private fun fetch(url: String, out: File, progress: (Int) -> Unit) {
         val tmp = File(out.parentFile, out.name + ".part")
-        val c = open(url)
+        // continue a broken download: ask only for the rest of the file
+        var have = if (tmp.exists()) tmp.length() else 0L
+        val c = openFrom(url, have)
         try {
-            val total = c.contentLength.toLong()
-            var done = 0L
-            var last = -1
+            val partial = c.responseCode == 206
+            if (!partial) have = 0L
+            val total = if (c.contentLength >= 0) c.contentLength.toLong() + have else -1L
+            var done = have
+            var lastPct = -1
             c.inputStream.use { input ->
-                FileOutputStream(tmp).use { o ->
+                FileOutputStream(tmp, partial).use { o ->
                     val buf = ByteArray(64 * 1024)
                     while (true) {
                         val n = input.read(buf)
@@ -363,14 +395,40 @@ object Net {
                         done += n
                         if (total > 0) {
                             val pct = (done * 100 / total).toInt()
-                            if (pct != last) { last = pct; progress(pct) }
+                            if (pct != lastPct) { lastPct = pct; progress(pct) }
                         }
                     }
                 }
             }
+            if (total > 0 && done < total) throw java.io.IOException("החיבור נקטע ($done/$total)")
         } finally { c.disconnect() }
         if (out.exists()) out.delete()
         if (!tmp.renameTo(out)) throw java.io.IOException("rename failed")
+    }
+
+    private fun openFrom(url: String, from: Long): HttpURLConnection {
+        var u = url
+        repeat(8) {
+            val c = URL(u).openConnection() as HttpURLConnection
+            c.connectTimeout = 20000
+            c.readTimeout = 60000
+            c.instanceFollowRedirects = false
+            c.setRequestProperty("User-Agent", "SearchPlus-Android")
+            if (from > 0) c.setRequestProperty("Range", "bytes=$from-")
+            val code = c.responseCode
+            if (code in 300..399) {
+                val loc = c.getHeaderField("Location")
+                c.disconnect()
+                if (loc == null) throw java.io.IOException("redirect without location")
+                u = URL(URL(u), loc).toString()
+            } else {
+                if (code == 404) { c.disconnect(); throw java.io.FileNotFoundException(u) }
+                if (code == 416) { c.disconnect(); throw java.io.IOException("HTTP 416") }
+                if (code >= 400) { c.disconnect(); throw java.io.IOException("HTTP $code") }
+                return c
+            }
+        }
+        throw java.io.IOException("too many redirects")
     }
 }
 
