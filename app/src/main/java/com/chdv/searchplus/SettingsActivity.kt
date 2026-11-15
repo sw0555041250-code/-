@@ -75,7 +75,8 @@ class SettingsActivity : BaseActivity() {
         section("סידור המאגר")
         item("ספרים כפולים", "מציאת אותו ספר שנשמר כמה פעמים – לפי התוכן, לא לפי השם") { startActivity(android.content.Intent(this, OrganizeActivity::class.java).putExtra("tab", 0)) }
         item("סידור חכם לתיקיות", "הצעה לאיזו תיקייה כל ספר שייך, לפי מה שכתוב בו") { startActivity(android.content.Intent(this, OrganizeActivity::class.java).putExtra("tab", 1)) }
-        item("שמות חכמים", "שמות לקבצים ולתיקיות לפי דף השער והתוכן – עם אישור על כל שינוי") { startActivity(android.content.Intent(this, OrganizeActivity::class.java).putExtra("tab", 2)) }
+        item("מיזוג תיקיות חכם", "תיקיות באותו שם באיות אחר, תיקייה בתוך תיקייה באותו שם, תיקיות ריקות – עם אישור") { startActivity(android.content.Intent(this, OrganizeActivity::class.java).putExtra("tab", 2)) }
+        item("שמות חכמים", "שמות לקבצים ולתיקיות לפי דף השער והתוכן – עם אישור על כל שינוי") { startActivity(android.content.Intent(this, OrganizeActivity::class.java).putExtra("tab", 3)) }
 
         section("זיהוי טקסט בעמודים סרוקים (OCR)")
         val ocrReady = Ocr.ready(this)

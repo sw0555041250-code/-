@@ -614,4 +614,94 @@ object Organizer {
         }
         return moved
     }
+
+    // ---------------- smart folder merge ----------------
+
+    enum class MergeKind(val icon: String) { SAME_NAME("🔗"), NESTED("📂"), SINGLE("📄"), EMPTY("🗑") }
+
+    /** One suggested change: move the contents of [from] into [into] (and remove the empty folders). */
+    class Merge(val kind: MergeKind, val from: List<File>, val into: File, val books: Int, val text: String) {
+        // a single book moving up is a matter of taste: offered, not pre-checked
+        var selected = kind != MergeKind.SINGLE
+    }
+
+    private fun pdfCount(d: File): Int = d.walkTopDown().count { it.isFile && it.name.endsWith(".pdf", true) }
+    private fun hasAnyFile(d: File): Boolean = d.walkTopDown().any { it.isFile }
+    private fun rel(root: File, d: File) = d.absolutePath.removePrefix(root.absolutePath).trim('/').ifEmpty { root.name }
+
+    /**
+     * Looks through [root] and every folder in it for folders that should be one: the same name in
+     * another spelling or a copy ("ליקוטי"/"לקוטי", "לקו״ש", "(2)", "עותק", "חדש"), a folder that
+     * only holds a folder of the same name, a folder with a single book, and empty folders.
+     */
+    fun mergePlan(root: File, progress: (String) -> Unit): List<Merge> {
+        val out = ArrayList<Merge>()
+        val taken = HashSet<String>()
+        fun visit(d: File, depth: Int) {
+            if (depth > 12) return
+            val subs = d.listFiles()?.filter { it.isDirectory && !it.name.startsWith(".") && it.name != DUP_DIR }?.sortedBy { it.name } ?: return
+            progress(rel(root, d))
+            // 1. the same name among sisters
+            val groups = subs.groupBy { com.chdv.searchplus.core.FolderNames.key(it.name) }.filter { it.key.isNotEmpty() && it.value.size > 1 }
+            for ((_, g) in groups) {
+                val counts = g.associateWith { pdfCount(it) }
+                // into the fullest one (and with the plainest name)
+                val into = g.maxWith(compareBy<File>({ counts[it] ?: 0 }, { -it.name.length }))
+                val from = g.filter { it != into }
+                out.add(Merge(MergeKind.SAME_NAME, from, into, from.sumOf { counts[it] ?: 0 },
+                    "לאחד: " + from.joinToString(" + ") { "„${it.name}”" } + " ← אל „${into.name}”  (${rel(root, d)})"))
+                taken.addAll(from.map { it.absolutePath })
+            }
+            for (s in subs) {
+                if (s.absolutePath in taken) continue
+                val inside = s.listFiles() ?: continue
+                val subDirs = inside.filter { it.isDirectory }
+                val files = inside.filter { it.isFile }
+                when {
+                    // 4. nothing at all inside (also in its folders)
+                    !hasAnyFile(s) -> { out.add(Merge(MergeKind.EMPTY, listOf(s), d, 0, "למחוק תיקייה ריקה: „${rel(root, s)}”")); continue }
+                    // 2. "תניא/תניא": a folder that only holds a folder of the same name
+                    files.isEmpty() && subDirs.size == 1 && com.chdv.searchplus.core.FolderNames.same(subDirs[0].name, s.name) ->
+                        out.add(Merge(MergeKind.NESTED, listOf(subDirs[0]), s, pdfCount(subDirs[0]), "לבטל תיקייה כפולה: „${rel(root, subDirs[0])}” ← אל „${rel(root, s)}”"))
+                    // 3. a folder with one book and nothing else
+                    subDirs.isEmpty() && files.size == 1 && files[0].name.endsWith(".pdf", true) && d != root.parentFile ->
+                        out.add(Merge(MergeKind.SINGLE, listOf(s), d, 1, "תיקייה עם ספר אחד: „${files[0].nameWithoutExtension}” ← להעביר ל-„${rel(root, d)}”"))
+                }
+                visit(s, depth + 1)
+            }
+        }
+        visit(root, 0)
+        return out
+    }
+
+    /** Moves a whole folder's contents into [into] (folders of the same name are merged), then removes it. */
+    private fun mergeDir(src: File, into: File, progress: (String) -> Unit): Int {
+        var n = 0
+        into.mkdirs()
+        for (f in src.listFiles() ?: emptyArray()) {
+            if (f.isDirectory) {
+                // a folder of the same name (in any spelling) already there: merge into it
+                val same = into.listFiles()?.firstOrNull { it.isDirectory && com.chdv.searchplus.core.FolderNames.same(it.name, f.name) }
+                n += mergeDir(f, same ?: File(into, f.name), progress)
+            } else {
+                progress(f.name)
+                if (moveBook(f.absolutePath, into) != null) n++
+            }
+        }
+        if (!hasAnyFile(src)) src.deleteRecursively()
+        return n
+    }
+
+    /** Carries out the chosen merges. Every file move is logged – "ביטול" puts them back. */
+    fun applyMerges(ms: List<Merge>, progress: (String) -> Unit): Int {
+        beginBatch()
+        var n = 0
+        for (m in ms.filter { it.selected }) {
+            when (m.kind) {
+                MergeKind.EMPTY -> m.from.forEach { if (!hasAnyFile(it)) it.deleteRecursively() }
+                else -> m.from.forEach { if (it.exists()) n += mergeDir(it, m.into, progress) }
+            }
+        }
+        return n
+    }
 }

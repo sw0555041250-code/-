@@ -102,3 +102,26 @@ class Names(books: List<Item>) {
         return out.sortedWith(compareByDescending<Hit> { Math.round(it.score * 10) }.thenBy { len[it.id] ?: 0 }).take(max)
     }
 }
+
+/**
+ * Folder names that mean the same folder: "ליקוטי שיחות" = "לקוטי שיחות" = "לקו״ש", "תניא" = "תניא (2)"
+ * = "תניא - עותק" = "תניא חדש". Used to suggest merging folders.
+ */
+object FolderNames {
+    /** Words that don't make a folder different ("עותק", "חדש", "(2)", "new"…). */
+    private val NOISE = setOf("עותק", "העתק", "חדש", "חדשה", "נוסף", "נוספים", "ישן", "copy", "new", "old", "pdf", "קבצים", "files", "הורדות", "download", "downloads")
+
+    fun key(name: String): String {
+        var t = name.lowercase()
+            .replace(Regex("\\(\\d+\\)"), " ")           // "(2)"
+            .replace(Regex("[_.\\-–—]+"), " ")
+        t = Abbr.expand(t)
+        val words = RefParser.normalize(t).split(' ').filter { it.isNotBlank() && it !in NOISE }
+        return words.map { Names.key(it).ifEmpty { it } }.joinToString(" ")
+    }
+
+    fun same(a: String, b: String): Boolean {
+        val ka = key(a); val kb = key(b)
+        return ka.isNotEmpty() && ka == kb
+    }
+}

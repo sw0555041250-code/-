@@ -21,6 +21,8 @@ class OrganizeActivity : BaseActivity() {
     private var targets: List<Organizer.Target> = emptyList()
     private var renames: List<Organizer.Rename>? = null
     private var plan: Organizer.Plan? = null
+    private var merges: List<Organizer.Merge>? = null
+    private var mergeRoot: File? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,11 +38,11 @@ class OrganizeActivity : BaseActivity() {
 
     private fun render() {
         tabs.removeAllViews()
-        listOf("ספרים כפולים", "סידור לתיקיות", "שמות חכמים").forEachIndexed { i, t ->
+        listOf("כפולים", "סידור", "מיזוג תיקיות", "שמות").forEachIndexed { i, t ->
             tabs.addView(chip(t, i == tab) { if (!busy) { tab = i; plan = null; render() } }, lp(0, WRAP, 1f).m(dp(3), 0, dp(3), 0))
         }
         box.removeAllViews()
-        when (tab) { 0 -> renderDups(); 1 -> renderSort(); else -> renderNames() }
+        when (tab) { 0 -> renderDups(); 1 -> renderSort(); 2 -> renderMerge(); else -> renderNames() }
     }
 
     private fun note(t: String) = box.addView(label(t, 14.5f, Col.SUB).apply { setPadding(dp(4), dp(8), dp(4), dp(10)); setLineSpacing(0f, 1.12f) })
@@ -294,11 +296,67 @@ class OrganizeActivity : BaseActivity() {
         run("מחפש שמות לשיפור…", { p -> Organizer.beginBatch(); renames = Organizer.suggestNames(Library.roots(), all, p) }) { render() }
     }
 
+    // ---------------- smart folder merge ----------------
+
+    private fun renderMerge() {
+        val m = merges
+        if (m == null) {
+            box.addView(label("מיזוג תיקיות חכם", 17f, Col.TEXT, true).apply { setPadding(dp(4), dp(10), dp(4), dp(2)) })
+            note("בוחרים תיקייה, והתוכנה בודקת אותה ואת כל התיקיות שבתוכה:\n" +
+                "🔗 אותה תיקייה בכמה שמות – \"ליקוטי שיחות\" ו-\"לקוטי שיחות\" ו-\"לקו״ש\", \"תניא\" ו-\"תניא (2)\" / \"עותק\" / \"חדש\" – לאחד לתיקייה אחת.\n" +
+                "📂 תיקייה בתוך תיקייה באותו שם (תניא › תניא) – לבטל את הכפולה.\n" +
+                "📄 תיקייה עם ספר אחד בלבד – להעביר את הספר לתיקייה שמעליה.\n" +
+                "🗑 תיקיות ריקות – למחוק.\n\n" +
+                "רואים את כל ההצעות, מסמנים מה לעשות – ורק אחרי אישור הקבצים זזים. הכול ניתן לביטול (↶ ביטול למעלה). ספרים שזזים לא נסרקים שוב.")
+            box.addView(pill("בחירת תיקייה לבדיקה") {
+                FolderPicker.pick(this) { d -> doMerge(File(d)) }
+            }, lp(MATCH, WRAP).m(0, dp(4), 0, dp(4)))
+            Library.roots().firstOrNull()?.let { r ->
+                box.addView(pill("כל המאגר", false) { doMerge(File(r)) }, lp(MATCH, WRAP).m(0, dp(4), 0, dp(4)))
+            }
+            return
+        }
+        if (m.isEmpty()) { note("לא נמצא מה למזג – התיקיות נראות מסודרות 👍"); box.addView(pill("בדיקת תיקייה אחרת", false) { merges = null; render() }); return }
+        val sel = m.count { it.selected }
+        box.addView(label("נמצאו ${m.size} הצעות ב„${mergeRoot?.name}”", 17f, Col.TEXT, true).apply { setPadding(dp(4), dp(8), dp(4), dp(2)) })
+        note("מסמנים מה לבצע. הצעות 📄 (ספר בודד) לא מסומנות מראש – לפי הטעם.")
+        val row = hbox()
+        row.addView(pill("ביצוע $sel השינויים המסומנים") {
+            val chosen = m.filter { it.selected }
+            if (chosen.isEmpty()) { toast("לא סומן כלום"); return@pill }
+            Sheet.confirm(this, "לבצע ${chosen.size} שינויים?", "הקבצים יועברו לפי ההצעות המסומנות, ותיקיות שהתרוקנו יימחקו. אפשר להחזיר הכול בכפתור ↶ ביטול.", "ביצוע") {
+                var moved = 0
+                run("ממזג תיקיות…", { p -> moved = Organizer.applyMerges(chosen, p) }) {
+                    merges = null; render()
+                    Sheet.info(this, "התיקיות סודרו ✓", "הועברו $moved קבצים. לא אהבתם? ↶ ביטול למעלה מחזיר הכול.")
+                }
+            }
+        }, lp(0, WRAP, 1f))
+        row.addView(pill("ביטול", false) { merges = null; render() }, lp(WRAP, WRAP))
+        box.addView(row, lp(MATCH, WRAP).m(0, 0, 0, dp(6)))
+        for (x in m) {
+            val c = card()
+            val cb = android.widget.CheckBox(this).apply {
+                text = x.kind.icon + " " + x.text + (if (x.books > 0) "  ·  ${x.books} ספרים" else "")
+                isChecked = x.selected; textSize = 14.5f * scale(); setTextColor(Col.TEXT)
+                layoutDirection = View.LAYOUT_DIRECTION_RTL
+                setOnCheckedChangeListener { _, on -> x.selected = on }
+            }
+            c.addView(cb)
+        }
+    }
+
+    private fun doMerge(dir: File) {
+        mergeRoot = dir
+        var found: List<Organizer.Merge> = emptyList()
+        run("בודק את התיקיות…", { p -> found = Organizer.mergePlan(dir, p) }) { merges = found; render() }
+    }
+
     private fun undo() {
         val n = Organizer.undoCount()
         if (n == 0) { Sheet.info(this, "אין מה לבטל", "לא בוצעו העברות או שינויי שמות מאז הפעולה האחרונה."); return }
         Sheet.confirm(this, "ביטול הפעולה האחרונה", "להחזיר $n קבצים/תיקיות למקום ולשם הקודמים?", "ביטול הפעולה") {
-            run("מחזיר…", { _ -> val k = Organizer.undo(); ui { toast("הוחזרו $k") } }) { dups = null; suggestions = null; renames = null; plan = null; render() }
+            run("מחזיר…", { _ -> val k = Organizer.undo(); ui { toast("הוחזרו $k") } }) { dups = null; suggestions = null; renames = null; plan = null; merges = null; render() }
         }
     }
 
