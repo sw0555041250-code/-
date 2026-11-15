@@ -91,6 +91,12 @@ class App : Application() {
         if (level >= TRIM_MEMORY_RUNNING_LOW) {
             Thread { try { Semantic.close(); Semantic.Deep.close() } catch (e: Throwable) {} }.start()
         }
+        // in the background (a book open in another app): give back what can be rebuilt, so Android
+        // keeps the app alive and it comes back at once
+        if (level >= TRIM_MEMORY_BACKGROUND && !Progress.inScan) {
+            try { Db.get().dropCache(); Catalog.drop() } catch (e: Throwable) {}
+            System.gc()
+        }
     }
 
     companion object {

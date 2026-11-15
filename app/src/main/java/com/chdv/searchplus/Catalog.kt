@@ -33,6 +33,9 @@ object Catalog {
     @Synchronized
     private fun get(): Names = names ?: build()
 
+    /** Frees the names (built again on the next request). */
+    fun drop() { if (!rebuilding) { names = null; books = emptyMap() } }
+
     private fun build(): Names {
         val all = Db.get().books()
         val roots = Library.roots()

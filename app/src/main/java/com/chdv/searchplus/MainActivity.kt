@@ -612,8 +612,12 @@ class MainActivity : BaseActivity() {
                 r == android.app.ApplicationExitInfo.REASON_LOW_MEMORY || r == android.app.ApplicationExitInfo.REASON_ANR ||
                 false
             if (!bad) return
+            // closed for memory while it was in the background (e.g. a book open in ReadEra): Android does
+            // this to every app in the background – not an error, nothing to show
+            if (r == android.app.ApplicationExitInfo.REASON_LOW_MEMORY &&
+                e.importance > android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE) return
             val why = when (r) {
-                android.app.ApplicationExitInfo.REASON_LOW_MEMORY, android.app.ApplicationExitInfo.REASON_SIGNALED -> "המכשיר סגר את התוכנה כי נגמר הזיכרון"
+                android.app.ApplicationExitInfo.REASON_LOW_MEMORY, android.app.ApplicationExitInfo.REASON_SIGNALED -> "המכשיר סגר את התוכנה כי נגמר הזיכרון (בזמן שהייתה פתוחה על המסך)"
                 android.app.ApplicationExitInfo.REASON_ANR -> "התוכנה לא הגיבה זמן רב"
                 else -> "שגיאה בתוכנה"
             }

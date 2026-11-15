@@ -115,6 +115,9 @@ class Db private constructor(c: Context) : SQLiteOpenHelper(c, "index.db", null,
         readableDatabase.rawQuery("SELECT $COLS FROM files WHERE $where=? LIMIT 1", arrayOf(arg)).use { c -> if (c.moveToFirst()) readBook(c) else null }
     } catch (e: Exception) { null }
 
+    /** Frees the book list (read again on the next use). */
+    fun dropCache() { if (!reloading) { cache = null; byPath = emptyMap() } }
+
     fun book(id: Long): Book? = (if (stale) null else books()[id]) ?: readOne("id", id.toString())
 
     fun bookByPath(path: String): Book? = (if (stale) null else { books(); byPath[path] }) ?: readOne("path", path)
