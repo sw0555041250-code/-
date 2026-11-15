@@ -102,11 +102,12 @@ object DriveSync {
     /** Every PDF in the user's Drive (own files and shared with them), with the folder path of each. */
     fun listAll(token: String, progress: (String) -> Unit): List<Item> {
         val folders = HashMap<String, Pair<String, String?>>() // id → (name, parent)
+        val shared = HashSet<String>() // folders shared with me (someone else's)
         val pdfs = ArrayList<Triple<JSONObject, String?, Unit>>()
         var page: String? = null
         val q = URLEncoder.encode("(mimeType='application/pdf' or mimeType='application/vnd.google-apps.folder') and trashed=false", "UTF-8")
         do {
-            val url = "$API?q=$q&pageSize=1000&fields=" + URLEncoder.encode("nextPageToken,files(id,name,mimeType,parents,size,modifiedTime)", "UTF-8") +
+            val url = "$API?q=$q&pageSize=1000&fields=" + URLEncoder.encode("nextPageToken,files(id,name,mimeType,parents,size,modifiedTime,ownedByMe)", "UTF-8") +
                 "&includeItemsFromAllDrives=true&supportsAllDrives=true" + (page?.let { "&pageToken=" + URLEncoder.encode(it, "UTF-8") } ?: "")
             val c = get(url, token)
             val js = JSONObject(c.inputStream.bufferedReader().use { it.readText() }); c.disconnect()
@@ -114,19 +115,24 @@ object DriveSync {
             if (files != null) for (k in 0 until files.length()) {
                 val f = files.getJSONObject(k)
                 val parent = f.optJSONArray("parents")?.optString(0)
-                if (f.optString("mimeType") == "application/vnd.google-apps.folder") folders[f.getString("id")] = f.optString("name") to parent
-                else pdfs.add(Triple(f, parent, Unit))
+                if (f.optString("mimeType") == "application/vnd.google-apps.folder") {
+                    folders[f.getString("id")] = f.optString("name") to parent
+                    if (!f.optBoolean("ownedByMe", true)) shared.add(f.getString("id"))
+                } else pdfs.add(Triple(f, parent, Unit))
             }
             progress("מצאתי ${pdfs.size} ספרים…")
             page = js.optString("nextPageToken").ifEmpty { null }
         } while (page != null)
-        fun path(id: String?): String {
+        // books shared with me (not on my Drive): under "משותף איתי", in the folders they were shared in
+        fun path(id: String?, fileShared: Boolean): String {
             val parts = ArrayList<String>()
-            var cur = id; var guard = 0
-            while (cur != null && guard++ < 30) { val f = folders[cur] ?: break; parts.add(0, f.first); cur = f.second }
-            return parts.joinToString("/")
+            var cur = id; var guard = 0; var top: String? = null
+            while (cur != null && guard++ < 30) { val f = folders[cur] ?: break; parts.add(0, f.first); top = cur; cur = f.second }
+            val isShared = if (top != null) top in shared else fileShared
+            return (if (isShared) listOf("משותף איתי") + parts else parts).joinToString("/")
         }
-        return pdfs.map { (f, parent, _) -> Item(f.getString("id"), f.optString("name"), path(parent), f.optString("size").toLongOrNull() ?: 0L, f.optString("modifiedTime")) }
+        return pdfs.map { (f, parent, _) -> Item(f.getString("id"), f.optString("name"), path(parent, !f.optBoolean("ownedByMe", true)),
+            f.optString("size").toLongOrNull() ?: 0L, f.optString("modifiedTime")) }
     }
 
     fun download(token: String, it: Item, dest: File) {
@@ -160,7 +166,15 @@ object DriveSync {
 
     /** Folder checklist (top-level folders), with how many books and how big. */
     private fun choose(a: Activity, items: List<Item>, go: (List<Item>) -> Unit) {
-        val groups = items.groupBy { it.folder.substringBefore('/').ifEmpty { "(ראשי)" } }.toSortedMap()
+        // each folder that was shared with me is its own choice ("משותף איתי › …")
+        val groups = items.groupBy { i ->
+            val parts = i.folder.split('/').filter { it.isNotEmpty() }
+            when {
+                parts.isEmpty() -> "(ראשי)"
+                parts[0] == "משותף איתי" -> if (parts.size > 1) "משותף איתי › " + parts[1] else "משותף איתי"
+                else -> parts[0]
+            }
+        }.toSortedMap()
         val box = a.vbox().apply { setPadding(a.dp(18), a.dp(16), a.dp(18), a.dp(14)) }
         box.addView(a.label("נמצאו ${items.size} ספרים (${human(items.sumOf { it.size })})", 18f, Col.TEXT, true))
         box.addView(a.label("בחרו אילו תיקיות להביא למכשיר. ספרים שכבר הובאו לא יורדים שוב.", 14f, Col.SUB).apply { setPadding(0, a.dp(4), 0, a.dp(8)) })
