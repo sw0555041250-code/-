@@ -50,15 +50,17 @@ class CloudActivity : BaseActivity() {
 
         box.addView(pill("🔗 חיבור לחשבון Google Drive") { DriveSync.run(this, cloudDir(this)) { refresh() } }, lp(MATCH, WRAP).m(0, dp(4), 0, dp(2)))
         box.addView(label("מתחברים פעם אחת עם חשבון Google ומאשרים קריאה. התוכנה מוצאת את כל ספרי ה-PDF ב-Drive, אתם בוחרים תיקיות – והם יורדים למכשיר ונסרקים. רק קריאה: שום דבר ב-Drive לא משתנה.", 13.5f, Col.SUB).apply { setPadding(dp(4), 0, dp(4), dp(12)) })
-        box.addView(label("או בלי חיבור חשבון:", 14f, Col.ACC, true).apply { setPadding(0, dp(4), 0, dp(2)) })
-        box.addView(pill("📄 בחירת ספרים ידנית", false) { pickFiles() }, lp(MATCH, WRAP).m(0, dp(4), 0, dp(4)))
-        box.addView(pill("📁 בחירת תיקייה שלמה", false) { pickTree() }, lp(MATCH, WRAP).m(0, dp(4), 0, dp(10)))
+        box.addView(label("או בלי חיבור חשבון (עובד תמיד):", 14f, Col.ACC, true).apply { setPadding(0, dp(4), 0, dp(2)) })
+        box.addView(pill("📄 בחירת ספרים מ-Drive", false) { pickFiles() }, lp(MATCH, WRAP).m(0, dp(4), 0, dp(4)))
+        box.addView(label("גם תיקייה שלמה: נכנסים לתיקייה, לוחצים לחיצה ארוכה על ספר אחד, ואז ⋮ › \"בחירת הכול\" › \"בחירה\".", 13.5f, Col.SUB).apply { setPadding(dp(4), 0, dp(4), dp(8)) })
+        box.addView(pill("📁 בחירת תיקייה מהמכשיר או מהכרטיס", false) { pickTree() }, lp(MATCH, WRAP).m(0, dp(4), 0, dp(10)))
         box.addView(label("איך זה עובד", 15f, Col.ACC, true).apply { setPadding(0, dp(10), 0, dp(4)) })
         box.addView(label(
-            "בחירה ידנית: 1. לוחצים \"בחירת ספרים ידנית\". בחלון שנפתח לוחצים ☰ ובוחרים Google Drive (צריך שאפליקציית Drive תהיה מותקנת ומחוברת לחשבון).\n" +
-            "2. מסמנים ספרים – אפשר הרבה ביחד (לחיצה ארוכה על הראשון, ואז על השאר) – ולוחצים \"בחירה\".\n" +
+            "1. לוחצים \"בחירת ספרים מ-Drive\". בחלון שנפתח לוחצים ☰ ובוחרים Google Drive (צריך שאפליקציית Drive תהיה מותקנת ומחוברת לחשבון).\n" +
+            "2. נכנסים לתיקייה. לספרים בודדים – לחיצה ארוכה על הראשון ואז על השאר. לכל התיקייה – לחיצה ארוכה על ספר אחד, ⋮ › \"בחירת הכול\". ולוחצים \"בחירה\".\n" +
             "3. הספרים יורדים לתיקייה במכשיר, נכנסים למאגר ונסרקים. זהו – מחפשים.\n\n" +
-            "בחירת תיקייה שלמה עובדת בכרטיס הזיכרון ובחלק מאפליקציות הענן. Google Drive מאפשר לבחור קבצים (הרבה ביחד), לא תיקייה שלמה.", 14.5f, Col.SUB).apply { setLineSpacing(0f, 1.2f) })
+            "למה אין \"בחירת תיקייה\" מ-Drive? אנדרואיד לא מאפשר לבחור תיקייה שלמה מ-Google Drive – רק קבצים (וגם הרבה ביחד, כמו למעלה).\n\n" +
+            "\"חיבור לחשבון\" יעבוד אחרי רישום חד-פעמי של התוכנה אצל Google.", 14.5f, Col.SUB).apply { setLineSpacing(0f, 1.2f) })
         info = label("", 14f, Col.TEXT, true).apply { setPadding(0, dp(14), 0, dp(4)) }
         box.addView(info)
         log = vbox()

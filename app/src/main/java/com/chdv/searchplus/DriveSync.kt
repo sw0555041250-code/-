@@ -63,11 +63,23 @@ object DriveSync {
         return true
     }
 
+    /** The one-time registration with Google, step by step (only the app's owner can do it, with their Google account). */
+    const val SETUP = "https://github.com/sw0555041250-code/Search-Plus-/blob/main/docs/GOOGLE_DRIVE_SETUP.md"
+
     private fun failed(a: Activity, e: Throwable?) {
         val msg = e?.message ?: ""
+        val notRegistered = msg.contains("DEVELOPER_ERROR") || msg.contains("10:") || msg.contains("UNREGISTERED") || e == null
+        if (notRegistered) {
+            Sheet.confirm(a, "Google עוד לא מכירה את חיפוש פלוס",
+                "כדי שהתוכנה תוכל לקרוא את ה-Drive, צריך לרשום אותה פעם אחת אצל Google (כ-10 דקות, עם חשבון Google של בעל התוכנה). אחרי זה החיבור עובד לכל מי שמשתמש בה.\n\n" +
+                    "בינתיים אפשר להביא ספרים מה-Drive בלי חיבור: \"בחירת ספרים מ-Drive\" – נכנסים לתיקייה, ⋮ › \"בחירת הכול\"." +
+                    (if (msg.isNotEmpty()) "\n\n($msg)" else ""), "להוראות הרישום") {
+                if (!a.safeStart(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(SETUP)))) a.toast(SETUP)
+            }
+            return
+        }
         Sheet.info(a, "החיבור ל-Google Drive לא הצליח",
-            "אפשר לנסות שוב. אם זה חוזר: ודאו שיש במכשיר שירותי Google ושאתם מחוברים לחשבון.\n\n" +
-                (if (msg.contains("DEVELOPER_ERROR") || msg.contains("10:")) "(החיבור עוד לא הוגדר אצל Google עבור התוכנה – ראו הוראות המפתח.)\n" else "") + msg)
+            "אפשר לנסות שוב. אם זה חוזר: ודאו שיש אינטרנט, שיש במכשיר שירותי Google ושאתם מחוברים לחשבון.\n\n$msg")
     }
 
     // ---------- Drive API ----------
